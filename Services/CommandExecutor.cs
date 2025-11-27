@@ -27,7 +27,6 @@ public class CommandExecutor
 
         process.Start();
         await process.WaitForExitAsync();
-
         
         var output = await process.StandardOutput.ReadToEndAsync();
         var error = await process.StandardError.ReadToEndAsync();
