@@ -1,7 +1,9 @@
 using System.Text;
+using System.Text.Json; // Necesario para entender JSON
+using EnvyGuard.Agent.Models;
+using EnvyGuard.Agent.Services;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using EnvyGuard.Agent.Services;
 
 namespace EnvyGuard.Agent.Messaging;
 
@@ -28,11 +30,9 @@ public class CommandConsumer
     {
         var queueName = _config["RabbitMQ:QueueName"] ?? "pc_commands";
         
-        // Obtener conexión y crear canal
         var connection = await _connectionProvider.GetConnectionAsync(stoppingToken);
         var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
 
-        // Declarar cola (asegura que existe)
         await channel.QueueDeclareAsync(
             queue: queueName,
             durable: true,
@@ -41,7 +41,7 @@ public class CommandConsumer
             arguments: null,
             cancellationToken: stoppingToken);
 
-        _logger.LogInformation("Esperando comandos en cola: {Queue}", queueName);
+        _logger.LogInformation("🎧 Agente escuchando JSON en cola: {Queue}", queueName);
 
         var consumer = new AsyncEventingBasicConsumer(channel);
         
@@ -50,20 +50,40 @@ public class CommandConsumer
             var body = ea.Body.ToArray();
             var message = Encoding.UTF8.GetString(body);
             
-            _logger.LogInformation("Comando recibido: {Command}", message);
+            _logger.LogInformation("📩 Mensaje recibido: {Json}", message);
 
             try
             {
-                // Ejecutar el comando en el sistema Linux
-                await _executor.ExecuteAsync(message);
-                
-                // Confirmar procesado (Ack)
-                await channel.BasicAckAsync(ea.DeliveryTag, multiple: false, cancellationToken: stoppingToken);
+                // 1. Deserializar el JSON a nuestro objeto PcCommand
+                // La opción PropertyNameCaseInsensitive permite que "action": "Reboot" funcione igual
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var command = JsonSerializer.Deserialize<PcCommand>(message, options);
+
+                if (command != null)
+                {
+                    // 2. Ejecutar la lógica segura
+                    await _executor.ExecuteAsync(command);
+                    
+                    // 3. Confirmar procesado (Ack)
+                    await channel.BasicAckAsync(ea.DeliveryTag, multiple: false, cancellationToken: stoppingToken);
+                }
+                else
+                {
+                    _logger.LogWarning("El mensaje recibido no era un comando válido o estaba vacío.");
+                    // Aceptamos el mensaje para quitarlo de la cola aunque esté mal, para no bloquear
+                    await channel.BasicAckAsync(ea.DeliveryTag, multiple: false, cancellationToken: stoppingToken);
+                }
+            }
+            catch (JsonException)
+            {
+                _logger.LogError("Error: El mensaje recibido no es un JSON válido.");
+                // Rechazamos el mensaje (sin reencolar) porque está corrupto
+                await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: false, cancellationToken: stoppingToken);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error procesando comando.");
-                // Opcional: BasicNackAsync si quieres reencolar
+                _logger.LogError(ex, "Error crítico procesando comando.");
+                // Aquí podrías decidir si haces Nack con requeue=true para intentar de nuevo
             }
         };
 
