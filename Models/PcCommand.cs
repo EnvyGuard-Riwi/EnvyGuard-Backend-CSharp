@@ -1,4 +1,4 @@
-namespace DefaultNamespace;
+namespace EnvyGuard.Agent.Models;
 
 public class PcCommand
 {
