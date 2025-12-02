@@ -103,45 +103,52 @@ public class CommandExecutor
                 return $"echo '127.0.0.1 {command.Parameters}' | sudo tee -a /etc/hosts";
             
             case "format":
-                // LISTA BLANCA REAL (Basada en tu ls -l)
-                // Nombres exactos en minúscula.
-                // Agregamos 'mari' para que no te borres a ti misma.
-                // Agregamos 'victima' NO está aquí, así que será borrado (perfecto para la prueba).
-    
+                // LISTA BLANCA (Asegúrate que coincida con tu ls -l)
                 string safeUsers = "cohorte4|cohorte6|rwadmin|coders|mari|envyguard_admin";
 
                 return $@"
                     sudo bash -c '
                     cd /home
                     for D in *; do
-                        # Validamos si el usuario está en la lista blanca
                         if [[ ! ""$D"" =~ ^({safeUsers})$ ]]; then
                             echo ""Detectado intruso o cuenta antigua: $D - ELIMINANDO...""
-                            
-                            # 1. Matar procesos del usuario
                             pkill -u ""$D"" || true
-                            
-                            # 2. Borrar usuario y su carpeta
-                            userdel -r ""$D"" || echo ""No se pudo borrar el usuario $D (quizás solo es una carpeta huérfana)""
-                            
-                            # 3. Por si userdel falla pero la carpeta sigue ahí, forzamos borrado de carpeta
-                            if [ -d ""$D"" ]; then
-                                rm -rf ""$D""
-                            fi
+                            userdel -r ""$D"" || echo ""No se pudo borrar $D""
+                            if [ -d ""$D"" ]; then rm -rf ""$D""; fi
                         else
                             echo ""Mantenimiento a usuario seguro: $D""
-                            # Borramos temporales y descargas
-                            rm -rf ""/home/$D/Downloads/""*
-                            rm -rf ""/home/$D/Documents/""*
-                            rm -rf ""/home/$D/Desktop/""*
-                            rm -rf ""/home/$D/Pictures/""*
-                            rm -rf ""/home/$D/Music/""*
-                            rm -rf ""/home/$D/.cache/""*
-                            # Opcional: Borrar historial de comandos para privacidad
-                            rm -f ""/home/$D/.bash_history""
+                            
+                            # --- LIMPIEZA BILINGÜE (INGLÉS / ESPAÑOL) ---
+                            # Usamos 2>/dev/null para silenciar errores si la carpeta no existe
+                            
+                            # 1. Descargas / Downloads
+                            rm -rf ""/home/$D/Downloads/""* 2>/dev/null
+                            rm -rf ""/home/$D/Descargas/""* 2>/dev/null
+
+                            # 2. Documentos / Documents
+                            rm -rf ""/home/$D/Documents/""* 2>/dev/null
+                            rm -rf ""/home/$D/Documentos/""* 2>/dev/null
+
+                            # 3. Escritorio / Desktop
+                            rm -rf ""/home/$D/Desktop/""* 2>/dev/null
+                            rm -rf ""/home/$D/Escritorio/""* 2>/dev/null
+
+                            # 4. Imágenes / Pictures (Ojo con la tilde)
+                            rm -rf ""/home/$D/Pictures/""* 2>/dev/null
+                            rm -rf ""/home/$D/Imágenes/""* 2>/dev/null
+
+                            # 5. Música / Music (Ojo con la tilde)
+                            rm -rf ""/home/$D/Music/""* 2>/dev/null
+                            rm -rf ""/home/$D/Música/""* 2>/dev/null
+
+                            # 6. Caché (Igual para todos)
+                            rm -rf ""/home/$D/.cache/""* 2>/dev/null
+                            
+                            # 7. Papelera de reciclaje (Trash)
+                            rm -rf ""/home/$D/.local/share/Trash/""* 2>/dev/null
                         fi
                     done
-                    echo ""Limpieza profunda finalizada.""
+                    echo ""Limpieza profunda finalizada (Inglés/Español).""
                     '
                 ";
 
