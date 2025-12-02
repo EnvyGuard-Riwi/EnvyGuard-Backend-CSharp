@@ -5,7 +5,8 @@
 *.userosscache
 *.sln.docstates
 *.userprefs
-
+**/keys/id_rsa
+**/keys/id_rsa.pub
 # Mono auto generated files
 mono_crash.*
 
