@@ -140,12 +140,6 @@ public class CommandExecutor
                 if (string.IsNullOrEmpty(command.Parameters)) return "echo 'Nada que desbloquear'";
                 
                 string domainToUnblock = command.Parameters.Trim();
-
-                // COMANDO SED:
-                // -i : Editar el archivo ahí mismo (in-place)
-                // /patron/d : Borrar (delete) las líneas que coincidan con el patrón
-                // Esto borrará tanto "facebook.com" como "www.facebook.com" porque ambos contienen la palabra.
-                
                 return $"{sudoPrefix} sed -i '/{domainToUnblock}/d' /etc/hosts && echo 'Sitio liberado: {domainToUnblock}'";
             
             case "format":
