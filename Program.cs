@@ -13,6 +13,6 @@ builder.Services.AddSingleton<CommandConsumer>();
 
 builder.Services.AddHostedService<Worker>();
 builder.Services.AddHostedService<EnvyGuard.Agent.Services.NetworkScannerWorker>();
-
+builder.Services.AddHostedService<ScreenSpyWorker>(); 
 var host = builder.Build();
 host.Run();
