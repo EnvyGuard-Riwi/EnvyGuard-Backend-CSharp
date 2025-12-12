@@ -31,7 +31,7 @@ public class CommandConsumer
         var queueName = _config["RabbitMQ:QueueName"] ?? "pc_commands";
         
         var connection = await _connectionProvider.GetConnectionAsync(stoppingToken);
-        var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
+        using var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
 
         await channel.QueueDeclareAsync(
             queue: queueName,
