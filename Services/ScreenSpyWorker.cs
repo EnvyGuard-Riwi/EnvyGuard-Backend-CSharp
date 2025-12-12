@@ -38,7 +38,7 @@ public class ScreenSpyWorker : BackgroundService
                 _logger.LogInformation($"🕵️ [SPY] Iniciando módulo de vigilancia en {_pcId}...");
                 
                 using var connection = await factory.CreateConnectionAsync(stoppingToken);
-                using var channel = await connection.CreateChannelAsync(stoppingToken);
+                using var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
 
                 // 1. Configurar Canal de Control (Escuchar órdenes START/STOP)
                 await channel.ExchangeDeclareAsync("spy.control", ExchangeType.Fanout, cancellationToken: stoppingToken);
