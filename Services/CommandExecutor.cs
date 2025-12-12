@@ -176,6 +176,32 @@ public class CommandExecutor
 
             case "test":
                 return "echo 'Hola! La conexión SSH funciona correctamente.'";
+            
+            case "install_app":
+                if (string.IsNullOrEmpty(command.Parameters)) 
+                    return "echo '❌ Error: Debes enviar el nombre de la aplicación en Parameters.'";
+
+                string appName = command.Parameters.Trim();
+
+                // 🛡️ SEGURIDAD: Validar que el nombre solo tenga letras, números, guiones o puntos.
+                // Esto evita que alguien mande: "git; rm -rf /"
+                if (appName.Any(c => !char.IsLetterOrDigit(c) && c != '-' && c != '.' && c != '_' && c != ' '))
+                {
+                    return $"echo '❌ Error: El nombre de la aplicación \"{appName}\" contiene caracteres sospechosos.'";
+                }
+
+                // Lógica del comando:
+                // 1. sudo apt-get update
+                // 2. export DEBIAN_FRONTEND=noninteractive (Para que no salgan pantallas azules de configuración)
+                // 3. sudo apt-get install -y (Para responder "Sí" a todo automáticamente)
+                return $"{sudoPrefix} apt-get update -y && export DEBIAN_FRONTEND=noninteractive && {sudoPrefix} apt-get install -y {appName}";
+            
+            case "install_snap":
+                if (string.IsNullOrEmpty(command.Parameters)) return "echo 'Falta el nombre del snap'";
+                string snapName = command.Parameters.Trim();
+                // Snap requiere --classic para IDEs como Rider
+                return $"{sudoPrefix} snap install {snapName} --classic";
+            
 
             default:
                 return $"echo 'Acción {command.Action} no reconocida'";
