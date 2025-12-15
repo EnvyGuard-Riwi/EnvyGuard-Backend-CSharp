@@ -119,6 +119,11 @@ public class CommandExecutor
             case "shutdown":
                 return $"{sudoPrefix} shutdown -h now";
             
+            case "lock_session":
+                // Esto fuerza el bloqueo de todas las sesiones gráficas activas (GNOME, KDE, etc.)
+                // Funciona en Ubuntu 18.04+, Debian 10+, Fedora (sistemas con systemd)
+                return $"{sudoPrefix} loginctl lock-sessions";
+            
             case "reboot":
                 return $"{sudoPrefix} reboot";
             
