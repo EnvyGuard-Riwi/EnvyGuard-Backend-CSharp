@@ -1,5 +1,5 @@
 using System.Text;
-using System.Text.Json; // Necesario para entender JSON
+using System.Text.Json;
 using EnvyGuard.Agent.Models;
 using EnvyGuard.Agent.Services;
 using RabbitMQ.Client;
@@ -9,18 +9,15 @@ namespace EnvyGuard.Agent.Messaging;
 
 public class CommandConsumer
 {
-    private readonly RabbitMqConnection _connectionProvider;
     private readonly CommandExecutor _executor;
     private readonly IConfiguration _config;
     private readonly ILogger<CommandConsumer> _logger;
 
     public CommandConsumer(
-        RabbitMqConnection connectionProvider, 
         CommandExecutor executor, 
         IConfiguration config,
         ILogger<CommandConsumer> logger)
     {
-        _connectionProvider = connectionProvider;
         _executor = executor;
         _config = config;
         _logger = logger;
@@ -28,10 +25,29 @@ public class CommandConsumer
 
     public async Task StartAsync(CancellationToken stoppingToken)
     {
+        // Leer configuración con valores por defecto seguros
         var queueName = _config["RabbitMQ:QueueName"] ?? "pc_commands";
+        var hostName = _config["RabbitMQ:HostName"] ?? "localhost";
+        var userName = _config["RabbitMQ:UserName"] ?? "guest";
+        var password = _config["RabbitMQ:Password"] ?? "guest";
+
+        _logger.LogInformation("🔌 Iniciando conexión BLINDADA a {Host}...", hostName);
+
+        var factory = new ConnectionFactory
+        {
+            HostName = hostName,
+            UserName = userName,
+            Password = password,
+            VirtualHost = "/",
+            AutomaticRecoveryEnabled = true,
+            NetworkRecoveryInterval = TimeSpan.FromSeconds(10)
+        };
+
+        // ⚠️ CORRECCIÓN AQUÍ: Quitamos el 'using' y arreglamos los parámetros
+        var connection = await factory.CreateConnectionAsync(stoppingToken);
         
-        var connection = await _connectionProvider.GetConnectionAsync(stoppingToken);
-        using var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
+        // Aquí estaba el error CS1503: Hay que especificar el nombre del parámetro
+        var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
 
         await channel.QueueDeclareAsync(
             queue: queueName,
@@ -41,7 +57,10 @@ public class CommandConsumer
             arguments: null,
             cancellationToken: stoppingToken);
 
-        _logger.LogInformation("🎧 Agente escuchando JSON en cola: {Queue}", queueName);
+        // QoS: Procesar 1 mensaje a la vez
+        await channel.BasicQosAsync(prefetchSize: 0, prefetchCount: 1, global: false, cancellationToken: stoppingToken);
+
+        _logger.LogInformation("🎧 Agente ESCUCHANDO (Versión Inmortal) en cola: {Queue}", queueName);
 
         var consumer = new AsyncEventingBasicConsumer(channel);
         
@@ -54,39 +73,39 @@ public class CommandConsumer
 
             try
             {
-                // 1. Deserializar el JSON a nuestro objeto PcCommand
-                // La opción PropertyNameCaseInsensitive permite que "action": "Reboot" funcione igual
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                 var command = JsonSerializer.Deserialize<PcCommand>(message, options);
 
                 if (command != null)
                 {
-                    // 2. Ejecutar la lógica segura
                     await _executor.ExecuteAsync(command);
                     
-                    // 3. Confirmar procesado (Ack)
-                    await channel.BasicAckAsync(ea.DeliveryTag, multiple: false, cancellationToken: stoppingToken);
+                    if (channel.IsOpen)
+                    {
+                        await channel.BasicAckAsync(ea.DeliveryTag, false, stoppingToken);
+                        _logger.LogInformation("✅ Mensaje confirmado (Ack).");
+                    }
                 }
                 else
                 {
-                    _logger.LogWarning("El mensaje recibido no era un comando válido o estaba vacío.");
-                    // Aceptamos el mensaje para quitarlo de la cola aunque esté mal, para no bloquear
-                    await channel.BasicAckAsync(ea.DeliveryTag, multiple: false, cancellationToken: stoppingToken);
+                    _logger.LogWarning("Mensaje vacío.");
+                    if (channel.IsOpen) await channel.BasicAckAsync(ea.DeliveryTag, false, stoppingToken);
                 }
-            }
-            catch (JsonException)
-            {
-                _logger.LogError("Error: El mensaje recibido no es un JSON válido.");
-                // Rechazamos el mensaje (sin reencolar) porque está corrupto
-                await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: false, cancellationToken: stoppingToken);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error crítico procesando comando.");
-                // Aquí podrías decidir si haces Nack con requeue=true para intentar de nuevo
+                _logger.LogError(ex, "⚠️ Error procesando. Enviando Nack.");
+                if (channel.IsOpen)
+                {
+                    // Requeue=false para borrar el mensaje malo
+                    await channel.BasicNackAsync(ea.DeliveryTag, false, false, stoppingToken);
+                }
             }
         };
 
         await channel.BasicConsumeAsync(queue: queueName, autoAck: false, consumer: consumer, cancellationToken: stoppingToken);
+        
+        // Mantener vivo por siempre
+        await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 }
