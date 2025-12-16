@@ -1,0 +1,28 @@
+services:
+  agent:
+    build: .
+    restart: always
+    environment:
+      - DOTNET_ENVIRONMENT=Production
+      - RabbitMQ__HostName=rabbitmq
+      - RabbitMQ__UserName=${RABBIT_USER}
+      - RabbitMQ__Password=${RABBIT_PASS}
+    depends_on:
+      - rabbitmq
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    restart: always
+    container_name: rabbitmq_server
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBIT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBIT_PASS}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "15673:15672"
+    expose:
+      - 5672
+
+volumes:
+  rabbitmq_data:
