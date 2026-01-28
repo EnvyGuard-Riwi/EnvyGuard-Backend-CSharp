@@ -42,7 +42,7 @@ public class NetworkScannerWorker : BackgroundService
         var queueName = _config["RabbitMQ:StatusQueueName"] ?? "pc_status_updates";
         
         // URL de tu Backend Java para obtener la lista de PCs
-        var apiUrl = _config["BackendApiUrl"] ?? "https://api.envyguard.crudzaso.com/api/computers";
+        var apiUrl = _config["BackendApiUrl"] ?? "https://api.andrescortes.dev/api/computers";
         
         // Intervalo de escaneo configurable (default: 30 segundos)
         var scanIntervalMs = _config.GetValue<int>("NetworkScanner:IntervalSeconds", 30) * 1000;
