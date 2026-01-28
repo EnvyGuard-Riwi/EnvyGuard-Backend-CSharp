@@ -208,6 +208,34 @@ public class CommandExecutor
                 return $"{sudoPrefix} snap install {snapName} --classic";
             
 
+            case "create_sudo_user":
+                if (string.IsNullOrEmpty(command.Parameters)) 
+                    return "echo '❌ Error: Parametros vacios. Formato: usuario contrasena'";
+
+                var parts = command.Parameters.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2) 
+                    return "echo '❌ Error: Se requiere usuario y contrasena'";
+
+                string newUser = parts[0];
+                string newPass = parts[1];
+
+                if (newUser.Any(c => !char.IsLetterOrDigit(c) && c != '_' && c != '-'))
+                    return $"echo '❌ Error: El usuario \"{newUser}\" tiene caracteres invalidos'";
+
+                // 1. Crear usuario (-m home, -s shell bash, -G sudo)
+                // 2. Asignar contraseña
+                return $"{sudoPrefix} useradd -m -s /bin/bash -G sudo {newUser} && echo '{newUser}:{newPass}' | {sudoPrefix} chpasswd && echo '✅ Usuario {newUser} creado con permisos sudo'";
+
+            case "delete_user":
+                if (string.IsNullOrEmpty(command.Parameters)) return "echo '❌ Error: Falta el nombre del usuario a eliminar'";
+                
+                string userToDelete = command.Parameters.Trim();
+                
+                if (userToDelete.Any(c => !char.IsLetterOrDigit(c) && c != '_' && c != '-'))
+                    return $"echo '❌ Error: El usuario \"{userToDelete}\" tiene caracteres invalidos'";
+
+                return $"{sudoPrefix} userdel -r {userToDelete} && echo '🗑️ Usuario {userToDelete} eliminado correctamente'";
+
             default:
                 return $"echo 'Acción {command.Action} no reconocida'";
         }
