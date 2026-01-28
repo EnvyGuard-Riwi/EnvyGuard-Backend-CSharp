@@ -1,4 +1,5 @@
-using System.Net.Http.Json; // Necesario para pedir la lista a Java
+using System.Collections.Concurrent;
+using System.Net.Http.Json;
 using System.Net.NetworkInformation;
 using System.Text;
 using System.Text.Json;
@@ -12,6 +13,10 @@ public class NetworkScannerWorker : BackgroundService
     private readonly IConfiguration _config;
     private readonly ConnectionFactory _factory;
     private readonly HttpClient _httpClient;
+    
+    // Diccionario para mantener el último estado conocido de cada PC
+    // Clave: ID del PC, Valor: true = ONLINE, false = OFFLINE
+    private readonly ConcurrentDictionary<long, bool> _lastKnownStatus = new();
 
     public NetworkScannerWorker(ILogger<NetworkScannerWorker> logger, IConfiguration config)
     {
@@ -37,10 +42,12 @@ public class NetworkScannerWorker : BackgroundService
         var queueName = _config["RabbitMQ:StatusQueueName"] ?? "pc_status_updates";
         
         // URL de tu Backend Java para obtener la lista de PCs
-        // Puedes poner esto en appsettings, pero aquí dejo el default
         var apiUrl = _config["BackendApiUrl"] ?? "https://api.envyguard.crudzaso.com/api/computers";
+        
+        // Intervalo de escaneo configurable (default: 30 segundos)
+        var scanIntervalMs = _config.GetValue<int>("NetworkScanner:IntervalSeconds", 30) * 1000;
 
-        _logger.LogInformation("📡 [RADAR] Iniciando escáner de red...");
+        _logger.LogInformation("📡 [RADAR] Iniciando escáner de red... (intervalo: {Interval}s)", scanIntervalMs / 1000);
         
         // Esperar un poco al inicio para que RabbitMQ y Java estén listos
         await Task.Delay(5000, stoppingToken);
@@ -73,37 +80,71 @@ public class NetworkScannerWorker : BackgroundService
 
                 _logger.LogInformation($"📡 Escaneando {pcsToScan.Count} dispositivos...");
 
+                int statusChanges = 0;
+
                 // 3. ESCANEAR CADA PC (PING)
                 foreach (var pc in pcsToScan)
                 {
                     // Hacemos el Ping
-                    bool isOnline = await PingHost(pc.Ip); // Asegúrate que tu DTO de Java tenga el campo "Ip" o "IpAddress"
-
-                    // Preparamos el mensaje para RabbitMQ
-                    var report = new 
-                    {
-                        PcId = pc.Id,         // ID único (ej: P5M9-0646)
-                        IpAddress = pc.Ip,    // IP (ej: 10.0.120.10)
-                        Status = isOnline ? "ONLINE" : "OFFLINE",
-                        Timestamp = DateTime.UtcNow
-                    };
-
-                    var json = JsonSerializer.Serialize(report);
-                    var body = Encoding.UTF8.GetBytes(json);
-
-                    // Enviamos el reporte
-                    await channel.BasicPublishAsync(
-                        exchange: "", 
-                        routingKey: queueName, 
-                        mandatory: false, 
-                        body: body, 
-                        cancellationToken: stoppingToken);
+                    bool isOnline = await PingHost(pc.Ip);
                     
-                    // Log visual (Opcional, comentar en producción si hace mucho ruido)
-                    if (isOnline)
-                        _logger.LogInformation($"✅ {pc.Id} ({pc.Ip}) está ONLINE");
+                    // Verificar si el estado cambió respecto al último conocido
+                    bool statusChanged = false;
+                    if (_lastKnownStatus.TryGetValue(pc.Id, out bool previousStatus))
+                    {
+                        // Si teníamos un estado previo, verificar si cambió
+                        statusChanged = previousStatus != isOnline;
+                    }
                     else
-                        _logger.LogWarning($"❌ {pc.Id} ({pc.Ip}) no responde.");
+                    {
+                        // Primera vez que escaneamos este PC - siempre reportar
+                        statusChanged = true;
+                    }
+                    
+                    // Actualizar el estado conocido
+                    _lastKnownStatus[pc.Id] = isOnline;
+                    
+                    // SOLO enviar mensaje si el estado CAMBIÓ
+                    if (statusChanged)
+                    {
+                        statusChanges++;
+                        
+                        var report = new 
+                        {
+                            PcId = pc.Id,
+                            PcName = pc.Name ?? pc.Id.ToString(),
+                            IpAddress = pc.Ip,
+                            MacAddress = pc.Mac,
+                            Status = isOnline ? "ONLINE" : "OFFLINE",
+                            Timestamp = DateTime.UtcNow
+                        };
+
+                        var json = JsonSerializer.Serialize(report);
+                        var body = Encoding.UTF8.GetBytes(json);
+
+                        await channel.BasicPublishAsync(
+                            exchange: "", 
+                            routingKey: queueName, 
+                            mandatory: false, 
+                            body: body, 
+                            cancellationToken: stoppingToken);
+                        
+                        // Log cuando hay cambio de estado
+                        if (isOnline)
+                            _logger.LogInformation($"🔄 {pc.Name ?? pc.Id.ToString()} ({pc.Ip}) cambió a ONLINE");
+                        else
+                            _logger.LogWarning($"🔄 {pc.Name ?? pc.Id.ToString()} ({pc.Ip}) cambió a OFFLINE");
+                    }
+                }
+                
+                // Log resumen del ciclo
+                if (statusChanges > 0)
+                {
+                    _logger.LogInformation($"📊 Ciclo completado: {statusChanges} cambios de estado detectados");
+                }
+                else
+                {
+                    _logger.LogDebug("📊 Ciclo completado: sin cambios de estado");
                 }
             }
             catch (Exception ex)
@@ -111,8 +152,8 @@ public class NetworkScannerWorker : BackgroundService
                 _logger.LogError($"🔥 Error en el ciclo de radar: {ex.Message}");
             }
 
-            // Esperar 10 segundos antes del siguiente barrido completo
-            await Task.Delay(10000, stoppingToken);
+            // Esperar antes del siguiente barrido (configurable, default 30 seg)
+            await Task.Delay(scanIntervalMs, stoppingToken);
         }
     }
 
@@ -122,14 +163,13 @@ public class NetworkScannerWorker : BackgroundService
     {
         try 
         {
-            // Pide la lista al Backend Java
             var lista = await _httpClient.GetFromJsonAsync<List<MonitoredPc>>(url);
             return lista ?? new List<MonitoredPc>();
         }
         catch (Exception ex)
         {
             _logger.LogError($"Error obteniendo lista de PCs desde Java: {ex.Message}");
-            return new List<MonitoredPc>(); // Retorna lista vacía para no romper el programa
+            return new List<MonitoredPc>();
         }
     }
 
@@ -139,7 +179,7 @@ public class NetworkScannerWorker : BackgroundService
         try
         {
             using var ping = new Ping();
-            var reply = await ping.SendPingAsync(ip, 1000); // Timeout 1 seg
+            var reply = await ping.SendPingAsync(ip, 1000);
             return reply.Status == IPStatus.Success;
         }
         catch
@@ -150,9 +190,18 @@ public class NetworkScannerWorker : BackgroundService
 }
 
 // Modelo simple para mapear lo que responde Java
-// Java debe devolver un JSON array: [{"id": "...", "ip": "..."}]
+// Java devuelve: [{"id": 1, "name": "PC 1", "ipAddress": "...", "macAddress": "..."}]
 public class MonitoredPc 
 { 
-    public string Id { get; set; } = ""; // Nombre del PC o ID de BD
-    public string Ip { get; set; } = ""; // Dirección IP
+    [System.Text.Json.Serialization.JsonPropertyName("id")]
+    public long Id { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("name")]
+    public string? Name { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("ipAddress")]
+    public string Ip { get; set; } = "";
+    
+    [System.Text.Json.Serialization.JsonPropertyName("macAddress")]
+    public string? Mac { get; set; }
 }
