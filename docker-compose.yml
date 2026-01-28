@@ -2,27 +2,38 @@ services:
   agent:
     build: .
     restart: always
+    network_mode: host
     environment:
       - DOTNET_ENVIRONMENT=Production
-      - RabbitMQ__HostName=rabbitmq
-      - RabbitMQ__UserName=${RABBIT_USER}
-      - RabbitMQ__Password=${RABBIT_PASS}
+      - RabbitMQ__HostName=127.0.0.1
+      - RabbitMQ__UserName=admin
+      - RabbitMQ__Password=envyguard2026**
+      - ConnectionStrings__RabbitMQ=amqp://admin:envyguard2026**@127.0.0.1:5672
+    volumes:
+      - ./keys:/app/keys
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
 
   rabbitmq:
     image: rabbitmq:4-management-alpine
     restart: always
     container_name: rabbitmq_server
     environment:
-      - RABBITMQ_DEFAULT_USER=${RABBIT_USER}
-      - RABBITMQ_DEFAULT_PASS=${RABBIT_PASS}
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=envyguard2026**
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     ports:
-      - "15673:15672"
+      - "15672:15672"
+      - "5672:5672"
     expose:
       - 5672
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   rabbitmq_data:
