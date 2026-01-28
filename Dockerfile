@@ -1,24 +1,21 @@
-# Etapa de construcción
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
-WORKDIR /app
+WORKDIR /src
 
-# Copiar archivos de proyecto
+# Copiar archivos desde la raíz
 COPY EnvyGuard.sln .
-COPY EnvyGuard.Agent/EnvyGuard.Agent.csproj ./EnvyGuard.Agent/
-RUN dotnet restore
+COPY EnvyGuard.Agent.csproj .
 
-# Copiar el resto y compilar
+# Restaurar dependencias
+RUN dotnet restore EnvyGuard.Agent.csproj
+
+# Copiar todo el código
 COPY . .
-WORKDIR /app/EnvyGuard.Agent
-RUN dotnet publish -c Release -o /app/out
 
-# Etapa de ejecución final
+# Compilar
+RUN dotnet publish EnvyGuard.Agent.csproj -c Release -o /app/publish
+
+# Etapa final
 FROM mcr.microsoft.com/dotnet/runtime:9.0
 WORKDIR /app
-COPY --from=build /app/out .
-
-# Crear carpeta para las llaves (se montarán como volumen externo)
-RUN mkdir -p /app/keys
-
-# El ENTRYPOINT ejecuta la DLL
+COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "EnvyGuard.Agent.dll"]
