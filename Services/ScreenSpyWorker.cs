@@ -146,14 +146,14 @@ if [ -f ""$XAUTH"" ]; then
 fi
 
 # 3. Intentar capturar
-# Opción A: scrot (Silencioso y rápido - Prioridad 1)
-scrot -z -o -q 50 ""$OUTPUT"" 2>/dev/null && exit 0
+# Opción A: import (ImageMagick - A veces funciona mejor que scrot)
+import -window root ""$OUTPUT"" 2>/dev/null && echo ""METHOD:import"" && exit 0
 
-# Opción B: import (ImageMagick - Silencioso - Prioridad 2)
-import -window root ""$OUTPUT"" 2>/dev/null && exit 0
+# Opción B: scrot (Silencioso)
+scrot -z -o -q 50 ""$OUTPUT"" 2>/dev/null && echo ""METHOD:scrot"" && exit 0
 
 # Opción C: gnome-screenshot (Flash visible - Último recurso)
-gnome-screenshot -f ""$OUTPUT"" 2>/dev/null && exit 0
+gnome-screenshot -f ""$OUTPUT"" 2>/dev/null && echo ""METHOD:gnome-screenshot"" && exit 0
 
 exit 1
 ";
@@ -171,14 +171,19 @@ exit 1
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardError = true,
-                RedirectStandardOutput = true
+                RedirectStandardOutput = true // Capturar stdout para ver el método
             };
-
+            
             using (var p = Process.Start(psiCapture)) { 
                 if (p != null) 
                 {
+                    string output = await p.StandardOutput.ReadToEndAsync();
                     string stderr = await p.StandardError.ReadToEndAsync();
                     await p.WaitForExitAsync();
+                    
+                    if (!string.IsNullOrWhiteSpace(output))
+                         _logger.LogInformation($"ℹ️ [SPY] Captura exitosa usando: {output.Trim()}");
+
                     if (p.ExitCode != 0)
                         _logger.LogWarning($"⚠️ [SPY] Fallaron todos los metodos de captura. Stderr: {stderr}");
                 }
