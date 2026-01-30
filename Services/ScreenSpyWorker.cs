@@ -113,11 +113,11 @@ public class ScreenSpyWorker : BackgroundService
         {
             _logger.LogInformation($"📷 [SPY] Capturando pantalla a {tempFile}...");
             
-            // Ejecutar scrot a través de bash para heredar las variables X11
+            // Ejecutar scrot con DISPLAY explícito para asegurar acceso a X11
             var psiScrot = new ProcessStartInfo
             {
                 FileName = "/bin/bash",
-                Arguments = $"-c \"scrot -z -o -q 50 '{tempFile}'\"",
+                Arguments = $"-c \"DISPLAY=:0 scrot -z -o -q 50 '{tempFile}'\"",
                 UseShellExecute = false, 
                 CreateNoWindow = true,
                 RedirectStandardError = true,
