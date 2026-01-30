@@ -111,36 +111,68 @@ public class ScreenSpyWorker : BackgroundService
         string tempFile = $"/tmp/spy_{Guid.NewGuid()}.jpg";
         try
         {
+            _logger.LogDebug($"📷 [SPY] Capturando pantalla a {tempFile}...");
+            
             // Usamos SCROT en modo silencioso (tu configuración ganadora para X11)
             var psiScrot = new ProcessStartInfo
             {
                 FileName = "scrot",
                 Arguments = $"-z -o -q 50 \"{tempFile}\"",
-                UseShellExecute = false, CreateNoWindow = true
+                UseShellExecute = false, 
+                CreateNoWindow = true,
+                RedirectStandardError = true
             };
             using (var p = Process.Start(psiScrot)) { 
-                if (p != null) await p.WaitForExitAsync(); 
+                if (p != null) 
+                {
+                    string stderr = await p.StandardError.ReadToEndAsync();
+                    await p.WaitForExitAsync();
+                    if (!string.IsNullOrEmpty(stderr))
+                        _logger.LogWarning($"⚠️ [SPY] scrot stderr: {stderr}");
+                }
             }
             
-            if (!File.Exists(tempFile) || new FileInfo(tempFile).Length == 0) return null;
+            if (!File.Exists(tempFile))
+            {
+                _logger.LogWarning($"⚠️ [SPY] Archivo no creado: {tempFile}");
+                return null;
+            }
+            
+            if (new FileInfo(tempFile).Length == 0)
+            {
+                _logger.LogWarning($"⚠️ [SPY] Archivo vacío: {tempFile}");
+                return null;
+            }
 
+            _logger.LogDebug($"📷 [SPY] Optimizando imagen...");
+            
             // Optimizar tamaño (Resize)
             var psiOpt = new ProcessStartInfo
             {
                 FileName = "mogrify",
                 Arguments = $"-resize 480 \"{tempFile}\"",
-                UseShellExecute = false, CreateNoWindow = true
+                UseShellExecute = false, 
+                CreateNoWindow = true,
+                RedirectStandardError = true
             };
             using (var p = Process.Start(psiOpt)) { 
-                if (p != null) await p.WaitForExitAsync(); 
+                if (p != null) 
+                {
+                    string stderr = await p.StandardError.ReadToEndAsync();
+                    await p.WaitForExitAsync();
+                    if (!string.IsNullOrEmpty(stderr))
+                        _logger.LogWarning($"⚠️ [SPY] mogrify stderr: {stderr}");
+                }
             }
 
             byte[] bytes = await File.ReadAllBytesAsync(tempFile);
             File.Delete(tempFile);
+            _logger.LogDebug($"📷 [SPY] Imagen lista: {bytes.Length} bytes");
             return bytes;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError($"❌ [SPY] Error capturando: {ex.Message}");
             return null; 
         }
     }
