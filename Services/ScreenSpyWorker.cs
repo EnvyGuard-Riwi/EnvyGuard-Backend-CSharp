@@ -118,7 +118,7 @@ public class ScreenSpyWorker : BackgroundService
             var psiScrot = new ProcessStartInfo
             {
                 FileName = "/bin/bash",
-                Arguments = $"-c \"DISPLAY=:0 scrot -z -o -q 50 '{tempFile}'\"",
+                Arguments = $"-c \"export DISPLAY=:0 && export XAUTHORITY=/home/$USER/.Xauthority && scrot -z -o -q 50 '{tempFile}'\"",
                 UseShellExecute = false, 
                 CreateNoWindow = true,
                 RedirectStandardError = true,
