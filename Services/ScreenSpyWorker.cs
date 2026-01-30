@@ -180,13 +180,13 @@ exit 1
                     string stderr = await p.StandardError.ReadToEndAsync();
                     await p.WaitForExitAsync();
                     if (p.ExitCode != 0)
-                        _logger.LogWarning($""⚠️ [SPY] Fallaron todos los metodos de captura. Stderr: {stderr}"");
+                        _logger.LogWarning($"⚠️ [SPY] Fallaron todos los metodos de captura. Stderr: {stderr}");
                 }
             }
             
             if (!File.Exists(tempFile))
             {
-                _logger.LogWarning($""⚠️ [SPY] Archivo no creado: {tempFile}"");
+                _logger.LogWarning($"⚠️ [SPY] Archivo no creado: {tempFile}");
                 return null;
             }
 
