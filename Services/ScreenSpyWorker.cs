@@ -147,26 +147,8 @@ public class ScreenSpyWorker : BackgroundService
                 return null;
             }
 
-            _logger.LogInformation($"📷 [SPY] Optimizando imagen...");
-            
-            // Optimizar tamaño (Resize)
-            var psiOpt = new ProcessStartInfo
-            {
-                FileName = "mogrify",
-                Arguments = $"-resize 480 \"{tempFile}\"",
-                UseShellExecute = false, 
-                CreateNoWindow = true,
-                RedirectStandardError = true
-            };
-            using (var p = Process.Start(psiOpt)) { 
-                if (p != null) 
-                {
-                    string stderr = await p.StandardError.ReadToEndAsync();
-                    await p.WaitForExitAsync();
-                    if (!string.IsNullOrEmpty(stderr))
-                        _logger.LogWarning($"⚠️ [SPY] mogrify stderr: {stderr}");
-                }
-            }
+            // Nota: mogrify eliminado porque corrompía las imágenes
+            // La imagen de scrot (~33KB) es suficientemente pequeña
 
             byte[] bytes = await File.ReadAllBytesAsync(tempFile);
             File.Delete(tempFile);
