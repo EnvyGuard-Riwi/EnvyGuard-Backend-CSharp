@@ -113,23 +113,16 @@ public class ScreenSpyWorker : BackgroundService
         {
             _logger.LogInformation($"📷 [SPY] Capturando pantalla a {tempFile}...");
             
-            // Obtener variables de entorno de X11
-            string display = Environment.GetEnvironmentVariable("DISPLAY") ?? ":0";
-            string xauth = Environment.GetEnvironmentVariable("XAUTHORITY") ?? 
-                           $"/home/{Environment.UserName}/.Xauthority";
-            
-            // Usamos SCROT en modo silencioso (tu configuración ganadora para X11)
+            // Ejecutar scrot a través de bash para heredar las variables X11
             var psiScrot = new ProcessStartInfo
             {
-                FileName = "scrot",
-                Arguments = $"-z -o -q 50 \"{tempFile}\"",
+                FileName = "/bin/bash",
+                Arguments = $"-c \"scrot -z -o -q 50 '{tempFile}'\"",
                 UseShellExecute = false, 
                 CreateNoWindow = true,
-                RedirectStandardError = true
+                RedirectStandardError = true,
+                RedirectStandardOutput = true
             };
-            // Pasar variables de X11 al proceso
-            psiScrot.Environment["DISPLAY"] = display;
-            psiScrot.Environment["XAUTHORITY"] = xauth;
             using (var p = Process.Start(psiScrot)) { 
                 if (p != null) 
                 {
@@ -137,6 +130,8 @@ public class ScreenSpyWorker : BackgroundService
                     await p.WaitForExitAsync();
                     if (!string.IsNullOrEmpty(stderr))
                         _logger.LogWarning($"⚠️ [SPY] scrot stderr: {stderr}");
+                    if (p.ExitCode != 0)
+                        _logger.LogWarning($"⚠️ [SPY] scrot exit code: {p.ExitCode}");
                 }
             }
             
