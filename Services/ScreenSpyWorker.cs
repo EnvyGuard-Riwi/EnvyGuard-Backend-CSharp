@@ -146,14 +146,14 @@ if [ -f ""$XAUTH"" ]; then
 fi
 
 # 3. Intentar capturar
-# Opción A: gnome-screenshot (Mejor para Ubuntu moderno/Wayland?)
-gnome-screenshot -f ""$OUTPUT"" 2>/dev/null && exit 0
-
-# Opción B: scrot (Clásico X11)
+# Opción A: scrot (Silencioso y rápido - Prioridad 1)
 scrot -z -o -q 50 ""$OUTPUT"" 2>/dev/null && exit 0
 
-# Opción C: import (ImageMagick fallback)
+# Opción B: import (ImageMagick - Silencioso - Prioridad 2)
 import -window root ""$OUTPUT"" 2>/dev/null && exit 0
+
+# Opción C: gnome-screenshot (Flash visible - Último recurso)
+gnome-screenshot -f ""$OUTPUT"" 2>/dev/null && exit 0
 
 exit 1
 ";
