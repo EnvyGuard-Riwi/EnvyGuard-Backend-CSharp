@@ -41,7 +41,8 @@ public class ScreenSpyWorker : BackgroundService
                 using var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
 
                 // 1. Configurar Canal de Control (Escuchar órdenes START/STOP)
-                await channel.ExchangeDeclareAsync("spy.control", ExchangeType.Fanout, cancellationToken: stoppingToken);
+                // IMPORTANTE: durable=true debe coincidir con la configuración del Backend Java
+                await channel.ExchangeDeclareAsync("spy.control", ExchangeType.Fanout, durable: true, cancellationToken: stoppingToken);
                 var queueName = (await channel.QueueDeclareAsync(cancellationToken: stoppingToken)).QueueName;
                 await channel.QueueBindAsync(queueName, "spy.control", "", cancellationToken: stoppingToken);
 
