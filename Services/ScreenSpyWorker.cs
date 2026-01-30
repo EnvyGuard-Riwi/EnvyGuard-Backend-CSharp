@@ -197,7 +197,7 @@ exit 1
             try { File.Delete(tempFile); } catch { }
             
             return imageBytes;
-
+        }
         catch (Exception ex)
         {
             _logger.LogError($"❌ [SPY] Error capturando: {ex.Message}");
