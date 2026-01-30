@@ -145,6 +145,9 @@ if [ -f ""$XAUTH"" ]; then
     export XAUTHORITY=$XAUTH
 fi
 
+echo ""INFO:SESSION_TYPE=$XDG_SESSION_TYPE""
+echo ""INFO:DESKTOP=$XDG_CURRENT_DESKTOP""
+
 # 3. Intentar capturar
 # Opción A: import (ImageMagick - Prioridad 1)
 # Quitamos 2>/dev/null para ver errores
