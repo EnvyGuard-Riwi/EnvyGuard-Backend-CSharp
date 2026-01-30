@@ -49,11 +49,11 @@ public class ScreenSpyWorker : BackgroundService
                 consumer.ReceivedAsync += async (model, ea) =>
                 {
                     var body = ea.Body.ToArray();
-                    var message = Encoding.UTF8.GetString(body);
+                    var message = Encoding.UTF8.GetString(body).Trim().Trim('"').ToUpper();
                     _logger.LogInformation($"📣 [SPY] Orden recibida: {message}");
 
-                    if (message == "START") _isSpying = true;
-                    if (message == "STOP") _isSpying = false;
+                    if (message.Contains("START")) _isSpying = true;
+                    if (message.Contains("STOP")) _isSpying = false;
                 };
                 await channel.BasicConsumeAsync(queueName, autoAck: true, consumer: consumer, cancellationToken: stoppingToken);
 
