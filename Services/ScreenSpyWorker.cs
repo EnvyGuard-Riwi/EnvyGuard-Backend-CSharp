@@ -146,14 +146,18 @@ if [ -f ""$XAUTH"" ]; then
 fi
 
 # 3. Intentar capturar
-# Opción A: import (ImageMagick - A veces funciona mejor que scrot)
-# Quitamos 2>/dev/null para ver por qué falla si falla
+# Opción A: import (ImageMagick - Prioridad 1)
+# Quitamos 2>/dev/null para ver errores
 import -display $DISPLAY -window root ""$OUTPUT"" && echo ""METHOD:import"" && exit 0
 
-# Opción B: scrot (Silencioso)
+# Opción B: xwd (X Window Dump - Muy robusto y silencioso - Prioridad 2)
+# Requiere: sudo apt-get install x11-apps imagemagick
+xwd -display $DISPLAY -root -silent -out ""$OUTPUT.xwd"" 2>/dev/null && convert ""$OUTPUT.xwd"" ""$OUTPUT"" 2>/dev/null && rm ""$OUTPUT.xwd"" && echo ""METHOD:xwd"" && exit 0
+
+# Opción C: scrot (Silencioso - Prioridad 3)
 scrot -z -o -q 50 ""$OUTPUT"" 2>/dev/null && echo ""METHOD:scrot"" && exit 0
 
-# Opción C: gnome-screenshot (Flash visible - Último recurso)
+# Opción D: gnome-screenshot (Flash visible - Último recurso)
 gnome-screenshot -f ""$OUTPUT"" 2>/dev/null && echo ""METHOD:gnome-screenshot"" && exit 0
 
 exit 1
@@ -185,8 +189,12 @@ exit 1
                     if (!string.IsNullOrWhiteSpace(output))
                          _logger.LogInformation($"ℹ️ [SPY] Captura exitosa usando: {output.Trim()}");
 
+                    // Loguear stderr SIEMPRE si hay algo, para saber por qué falló 'import' aunque 'scrot' funcionara después
+                    if (!string.IsNullOrWhiteSpace(stderr))
+                         _logger.LogWarning($"⚠️ [SPY] Errores internos durante captura: {stderr}");
+
                     if (p.ExitCode != 0)
-                        _logger.LogWarning($"⚠️ [SPY] Fallaron todos los metodos de captura. Stderr: {stderr}");
+                        _logger.LogWarning($"⚠️ [SPY] Fallaron todos los metodos de captura.");
                 }
             }
             
