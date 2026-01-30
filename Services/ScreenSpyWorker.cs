@@ -52,8 +52,8 @@ public class ScreenSpyWorker : BackgroundService
                     var message = Encoding.UTF8.GetString(body).Trim().Trim('"').ToUpper();
                     _logger.LogInformation($"📣 [SPY] Orden recibida: {message}");
 
-                    if (message.Contains("START")) _isSpying = true;
-                    if (message.Contains("STOP")) _isSpying = false;
+                    if (message.Contains("START")) { _isSpying = true; _logger.LogInformation("🟢 [SPY] Modo ACTIVO - Iniciando capturas"); }
+                    if (message.Contains("STOP")) { _isSpying = false; _logger.LogInformation("🔴 [SPY] Modo INACTIVO - Detenido"); }
                 };
                 await channel.BasicConsumeAsync(queueName, autoAck: true, consumer: consumer, cancellationToken: stoppingToken);
 
@@ -84,7 +84,7 @@ public class ScreenSpyWorker : BackgroundService
                                 // Enviar al Topic (Para que Java/React lo vean)
                                 await channel.BasicPublishAsync("amq.topic", "spy.screens", body, cancellationToken: stoppingToken);
                                 
-                                // _logger.LogInformation($"📸 [SPY] Foto enviada: {imageBytes.Length / 1024} KB");
+                                _logger.LogInformation($"📸 [SPY] Foto enviada: {imageBytes.Length / 1024} KB");
                                 lastHash = currentHash;
                             }
                         }
@@ -111,7 +111,7 @@ public class ScreenSpyWorker : BackgroundService
         string tempFile = $"/tmp/spy_{Guid.NewGuid()}.jpg";
         try
         {
-            _logger.LogDebug($"📷 [SPY] Capturando pantalla a {tempFile}...");
+            _logger.LogInformation($"📷 [SPY] Capturando pantalla a {tempFile}...");
             
             // Usamos SCROT en modo silencioso (tu configuración ganadora para X11)
             var psiScrot = new ProcessStartInfo
@@ -144,7 +144,7 @@ public class ScreenSpyWorker : BackgroundService
                 return null;
             }
 
-            _logger.LogDebug($"📷 [SPY] Optimizando imagen...");
+            _logger.LogInformation($"📷 [SPY] Optimizando imagen...");
             
             // Optimizar tamaño (Resize)
             var psiOpt = new ProcessStartInfo
@@ -167,7 +167,7 @@ public class ScreenSpyWorker : BackgroundService
 
             byte[] bytes = await File.ReadAllBytesAsync(tempFile);
             File.Delete(tempFile);
-            _logger.LogDebug($"📷 [SPY] Imagen lista: {bytes.Length} bytes");
+            _logger.LogInformation($"📷 [SPY] Imagen lista: {bytes.Length} bytes");
             return bytes;
         }
         catch (Exception ex)
