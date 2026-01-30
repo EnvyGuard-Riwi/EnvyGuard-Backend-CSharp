@@ -147,7 +147,8 @@ fi
 
 # 3. Intentar capturar
 # Opción A: import (ImageMagick - A veces funciona mejor que scrot)
-import -window root ""$OUTPUT"" 2>/dev/null && echo ""METHOD:import"" && exit 0
+# Quitamos 2>/dev/null para ver por qué falla si falla
+import -display $DISPLAY -window root ""$OUTPUT"" && echo ""METHOD:import"" && exit 0
 
 # Opción B: scrot (Silencioso)
 scrot -z -o -q 50 ""$OUTPUT"" 2>/dev/null && echo ""METHOD:scrot"" && exit 0
