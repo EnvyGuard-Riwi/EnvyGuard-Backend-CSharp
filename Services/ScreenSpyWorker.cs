@@ -118,7 +118,7 @@ public class ScreenSpyWorker : BackgroundService
             var psiScrot = new ProcessStartInfo
             {
                 FileName = "/bin/bash",
-                Arguments = $"-c \"export DISPLAY=:0 && export XAUTHORITY=$(find /run/user/$(id -u)/ -name 'Xauthority' 2>/dev/null | head -n 1) && [ -z '$XAUTHORITY' ] && export XAUTHORITY=/home/$(whoami)/.Xauthority; scrot -z -o -q 50 '{tempFile}'\"",
+                Arguments = $"-c \"export DISPLAY=:0 && export XAUTHORITY=$(find /run/user -name 'Xauthority' 2>/dev/null | head -n 1) && [ -z '$XAUTHORITY' ] && export XAUTHORITY=$(find /home -name '.Xauthority' 2>/dev/null | head -n 1); echo \\\"Using XAUTHORITY=$XAUTHORITY\\\"; scrot -z -o -q 50 '{tempFile}'\"",
                 UseShellExecute = false, 
                 CreateNoWindow = true,
                 RedirectStandardError = true,
