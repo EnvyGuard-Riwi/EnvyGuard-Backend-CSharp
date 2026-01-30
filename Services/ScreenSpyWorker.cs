@@ -114,48 +114,90 @@ public class ScreenSpyWorker : BackgroundService
         {
             _logger.LogInformation($"📷 [SPY] Capturando pantalla a {tempFile}...");
             
-            // Ejecutar scrot con DISPLAY explícito para asegurar acceso a X11
-            var psiScrot = new ProcessStartInfo
+            // Crear script de captura robusto
+            string scriptPath = "/tmp/capture_helper.sh";
+            if (!File.Exists(scriptPath))
+            {
+                string scriptContent = @"#!/bin/bash
+OUTPUT=$1
+
+# 1. Detectar usuario y display activo
+LINE=$(w -h | grep -E ' :[0-9]' | head -n 1)
+if [ -n ""$LINE"" ]; then
+    USER=$(echo ""$LINE"" | awk '{print $1}')
+    DISPLAY=$(echo ""$LINE"" | awk '{print $3}')
+else
+    USER=$(whoami)
+    DISPLAY=:0
+fi
+
+export DISPLAY=$DISPLAY
+
+# 2. Buscar XAUTHORITY
+# Intento A: Home del usuario
+XAUTH=/home/$USER/.Xauthority
+# Intento B: Runtime dir
+if [ ! -f ""$XAUTH"" ]; then
+    XAUTH=$(find /run/user -name 'Xauthority' 2>/dev/null | grep $(id -u $USER) | head -n 1)
+fi
+
+if [ -f ""$XAUTH"" ]; then
+    export XAUTHORITY=$XAUTH
+fi
+
+# 3. Intentar capturar
+# Opción A: gnome-screenshot (Mejor para Ubuntu moderno/Wayland?)
+gnome-screenshot -f ""$OUTPUT"" 2>/dev/null && exit 0
+
+# Opción B: scrot (Clásico X11)
+scrot -z -o -q 50 ""$OUTPUT"" 2>/dev/null && exit 0
+
+# Opción C: import (ImageMagick fallback)
+import -window root ""$OUTPUT"" 2>/dev/null && exit 0
+
+exit 1
+";
+                await File.WriteAllTextAsync(scriptPath, scriptContent);
+                // Dar permisos de ejecución
+                var chmod = new ProcessStartInfo { FileName = "chmod", Arguments = $"+x {scriptPath}" };
+                Process.Start(chmod)?.WaitForExit();
+            }
+
+            // Ejecutar el script helper
+            var psiCapture = new ProcessStartInfo
             {
                 FileName = "/bin/bash",
-                Arguments = $"-c \"export DISPLAY=:0 && export XAUTHORITY=$(find /run/user -name 'Xauthority' 2>/dev/null | head -n 1) && [ -z '$XAUTHORITY' ] && export XAUTHORITY=$(find /home -name '.Xauthority' 2>/dev/null | head -n 1); echo \\\"Using XAUTHORITY=$XAUTHORITY\\\"; scrot -z -o -q 50 '{tempFile}'\"",
-                UseShellExecute = false, 
+                Arguments = $"-c \"{scriptPath} '{tempFile}'\"",
+                UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardError = true,
                 RedirectStandardOutput = true
             };
-            using (var p = Process.Start(psiScrot)) { 
+
+            using (var p = Process.Start(psiCapture)) { 
                 if (p != null) 
                 {
                     string stderr = await p.StandardError.ReadToEndAsync();
                     await p.WaitForExitAsync();
-                    if (!string.IsNullOrEmpty(stderr))
-                        _logger.LogWarning($"⚠️ [SPY] scrot stderr: {stderr}");
                     if (p.ExitCode != 0)
-                        _logger.LogWarning($"⚠️ [SPY] scrot exit code: {p.ExitCode}");
+                        _logger.LogWarning($""⚠️ [SPY] Fallaron todos los metodos de captura. Stderr: {stderr}"");
                 }
             }
             
             if (!File.Exists(tempFile))
             {
-                _logger.LogWarning($"⚠️ [SPY] Archivo no creado: {tempFile}");
+                _logger.LogWarning($""⚠️ [SPY] Archivo no creado: {tempFile}"");
                 return null;
             }
+
+            // Leer bytes
+            byte[] imageBytes = await File.ReadAllBytesAsync(tempFile);
             
-            if (new FileInfo(tempFile).Length == 0)
-            {
-                _logger.LogWarning($"⚠️ [SPY] Archivo vacío: {tempFile}");
-                return null;
-            }
+            // Borrar temp
+            try { File.Delete(tempFile); } catch { }
+            
+            return imageBytes;
 
-            // Nota: mogrify eliminado porque corrompía las imágenes
-            // La imagen de scrot (~33KB) es suficientemente pequeña
-
-            byte[] bytes = await File.ReadAllBytesAsync(tempFile);
-            File.Delete(tempFile);
-            _logger.LogInformation($"📷 [SPY] Imagen lista: {bytes.Length} bytes");
-            return bytes;
-        }
         catch (Exception ex)
         {
             _logger.LogError($"❌ [SPY] Error capturando: {ex.Message}");
