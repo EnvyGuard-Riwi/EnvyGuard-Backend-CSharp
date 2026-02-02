@@ -40,7 +40,8 @@ public class CommandConsumer
             Password = password,
             VirtualHost = "/",
             AutomaticRecoveryEnabled = true,
-            NetworkRecoveryInterval = TimeSpan.FromSeconds(10)
+            NetworkRecoveryInterval = TimeSpan.FromSeconds(5),
+            RequestedHeartbeat = TimeSpan.FromSeconds(5) // Heartbeat agresivo para evitar corte por firewall
         };
 
         // ⚠️ CORRECCIÓN AQUÍ: Quitamos el 'using' y arreglamos los parámetros

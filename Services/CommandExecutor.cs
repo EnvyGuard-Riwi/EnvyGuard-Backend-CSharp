@@ -259,15 +259,66 @@ public class CommandExecutor
             for (int i = 0; i < 16; i++)
                 Array.Copy(macBytes, 0, packet, 6 + i * 6, 6);
 
-            using var client = new UdpClient();
-            client.EnableBroadcast = true;
-            await client.SendAsync(packet, packet.Length, new IPEndPoint(IPAddress.Broadcast, 9));
+            // Obtener todas las interfaces de red activas
+            var interfaces = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                .Where(n => n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up &&
+                            n.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback)
+                .ToList();
+
+            if (!interfaces.Any())
+            {
+                _logger.LogWarning("⚠️ No se detectaron interfaces de red activas. Usando Broadcast global.");
+                using var client = new UdpClient();
+                client.EnableBroadcast = true;
+                await client.SendAsync(packet, packet.Length, new IPEndPoint(IPAddress.Broadcast, 9));
+                return;
+            }
+
+            foreach (var netInterface in interfaces)
+            {
+                var ipProps = netInterface.GetIPProperties();
+                foreach (var unicast in ipProps.UnicastAddresses)
+                {
+                    if (unicast.Address.AddressFamily == AddressFamily.InterNetwork)
+                    {
+                        var broadcastAddress = GetBroadcastAddress(unicast.Address, unicast.IPv4Mask);
+                        if (broadcastAddress != null)
+                        {
+                            try 
+                            {
+                                using var client = new UdpClient();
+                                client.EnableBroadcast = true;
+                                // Bind to the specific interface IP to force sending from correct interface
+                                client.Client.Bind(new IPEndPoint(unicast.Address, 0)); 
+                                await client.SendAsync(packet, packet.Length, new IPEndPoint(broadcastAddress, 9));
+                                _logger.LogInformation("📡 WOL enviado desde {Ip} a broadcast {Broadcast} (Interfaz: {Name})", 
+                                    unicast.Address, broadcastAddress, netInterface.Name);
+                            }
+                            catch (Exception sendEx)
+                            {
+                                _logger.LogWarning("⚠️ Falló envío por interfaz {Name}: {Error}", netInterface.Name, sendEx.Message);
+                            }
+                        }
+                    }
+                }
+            }
             
-            _logger.LogInformation("✨ Paquete Mágico (WOL) enviado a la MAC: {Mac}", macAddress);
+            _logger.LogInformation("✨ Proceso de Wake-on-LAN completado para la MAC: {Mac}", macAddress);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Falló el envío de WOL a {Mac}", macAddress);
         }
+    }
+
+    private IPAddress GetBroadcastAddress(IPAddress address, IPAddress mask)
+    {
+        if (mask == null) return IPAddress.Broadcast; // Fallback
+
+        uint ipAddress = BitConverter.ToUInt32(address.GetAddressBytes(), 0);
+        uint ipMaskV4 = BitConverter.ToUInt32(mask.GetAddressBytes(), 0);
+        uint broadCastIpAddress = ipAddress | ~ipMaskV4;
+
+        return new IPAddress(BitConverter.GetBytes(broadCastIpAddress));
     }
 }
