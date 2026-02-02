@@ -4,6 +4,8 @@ using System.Text;
 using System.Text.Json;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using System.Net;
+using System.Net.Sockets;
 
 namespace EnvyGuard.Agent.Services;
 
@@ -83,7 +85,14 @@ public class ScreenSpyWorker : BackgroundService
                                 var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload));
 
                                 // Enviar al Topic (Para que Java/React lo vean)
-                                await channel.BasicPublishAsync("amq.topic", "spy.screens", body, cancellationToken: stoppingToken);
+                                var props = new BasicProperties 
+                                { 
+                                    Priority = 0,
+                                    ContentType = "application/json",
+                                    DeliveryMode = DeliveryModes.Persistent
+                                };
+                                
+                                await channel.BasicPublishAsync(exchange: "amq.topic", routingKey: "spy.screens", mandatory: false, basicProperties: props, body: body, cancellationToken: stoppingToken);
                                 
                                 _logger.LogInformation($"📸 [SPY] Foto enviada: {imageBytes.Length / 1024} KB");
                                 lastHash = currentHash;
@@ -220,7 +229,8 @@ exit 1
             _logger.LogError($"❌ [SPY] Error capturando: {ex.Message}");
             return null; 
         }
-    }
+
+}
 
     private string CalcularHash(byte[] data)
     {
