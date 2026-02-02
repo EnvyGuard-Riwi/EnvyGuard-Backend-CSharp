@@ -52,6 +52,9 @@ public class NetworkScannerWorker : BackgroundService
         // Esperar un poco al inicio para que RabbitMQ y Java estén listos
         await Task.Delay(5000, stoppingToken);
 
+        _logger.LogInformation("📡 [RADAR] Escáner de red DESACTIVADO por solicitud del usuario.");
+        
+        /* Comentado para desactivar el envío de estados a RabbitMQ
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -155,6 +158,10 @@ public class NetworkScannerWorker : BackgroundService
             // Esperar antes del siguiente barrido (configurable, default 30 seg)
             await Task.Delay(scanIntervalMs, stoppingToken);
         }
+        */
+        
+        await Task.CompletedTask;
+    }
     }
 
     // --- MÉTODOS AUXILIARES ---
