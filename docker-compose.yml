@@ -11,7 +11,7 @@ services:
       - RabbitMQ__HostName=127.0.0.1
       - RabbitMQ__UserName=admin
       - RabbitMQ__Password=envyguard2026**
-      - ConnectionStrings__RabbitMQ=amqp://admin:envyguard2026**@127.0.0.1:5672
+      - ConnectionStrings__RabbitMQ=amqp://admin:envyguard2026**@rabbitmq.andrescortes.dev:5672
     volumes:
       - ./keys:/app/keys
     depends_on:

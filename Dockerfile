@@ -28,6 +28,7 @@ RUN dotnet publish EnvyGuard.Agent.csproj -c Release -o /app/publish
 # Etapa final (Runtime)
 # Etapa final
 FROM mcr.microsoft.com/dotnet/runtime:9.0
+RUN apt-get update && apt-get install -y iputils-ping
 WORKDIR /app
 COPY --from=build /app/publish .
 COPY --from=build /app/publish .

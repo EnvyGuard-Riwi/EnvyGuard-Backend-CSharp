@@ -1,0 +1,19 @@
+[Unit]
+Description=EnvyGuard Agent Service
+After=network.target
+
+[Service]
+Type=simple
+User=mari
+WorkingDirectory=/opt/envyguard-agent
+ExecStart=/usr/bin/dotnet /opt/envyguard-agent/EnvyGuard.Agent.dll
+Restart=always
+RestartSec=10
+Environment=DOTNET_ENVIRONMENT=Production
+Environment=RabbitMQ__HostName=rabbitmq.andrescortes.dev
+Environment=RabbitMQ__UserName=admin
+Environment=RabbitMQ__Password=envyguard2026**
+Environment="ConnectionStrings__RabbitMQ=amqp://admin:envyguard2026**@rabbitmq.andrescortes.dev:5672"
+
+[Install]
+WantedBy=multi-user.target
