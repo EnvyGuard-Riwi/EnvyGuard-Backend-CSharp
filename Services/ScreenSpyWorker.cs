@@ -50,11 +50,11 @@ public class ScreenSpyWorker : BackgroundService
                 consumer.ReceivedAsync += async (model, ea) =>
                 {
                     var body = ea.Body.ToArray();
-                    var message = Encoding.UTF8.GetString(body);
+                    var message = Encoding.UTF8.GetString(body).Trim().Trim('"').ToUpper();
                     _logger.LogInformation($"📣 [SPY] Orden recibida: {message}");
 
-                    if (message == "START") _isSpying = true;
-                    if (message == "STOP") _isSpying = false;
+                    if (message.Contains("START")) { _isSpying = true; _logger.LogInformation("🟢 [SPY] Modo ACTIVO - Iniciando capturas"); }
+                    if (message.Contains("STOP")) { _isSpying = false; _logger.LogInformation("🔴 [SPY] Modo INACTIVO - Detenido"); }
                 };
                 await channel.BasicConsumeAsync(queueName, autoAck: true, consumer: consumer, cancellationToken: stoppingToken);
 
@@ -85,7 +85,7 @@ public class ScreenSpyWorker : BackgroundService
                                 // Enviar al Topic (Para que Java/React lo vean)
                                 await channel.BasicPublishAsync("amq.topic", "spy.screens", body, cancellationToken: stoppingToken);
                                 
-                                // _logger.LogInformation($"📸 [SPY] Foto enviada: {imageBytes.Length / 1024} KB");
+                                _logger.LogInformation($"📸 [SPY] Foto enviada: {imageBytes.Length / 1024} KB");
                                 lastHash = currentHash;
                             }
                         }
@@ -112,36 +112,112 @@ public class ScreenSpyWorker : BackgroundService
         string tempFile = $"/tmp/spy_{Guid.NewGuid()}.jpg";
         try
         {
-            // Usamos SCROT en modo silencioso (tu configuración ganadora para X11)
-            var psiScrot = new ProcessStartInfo
+            _logger.LogInformation($"📷 [SPY] Capturando pantalla a {tempFile}...");
+            
+            // Crear script de captura robusto
+            string scriptPath = "/tmp/capture_helper.sh";
+            if (!File.Exists(scriptPath))
             {
-                FileName = "scrot",
-                Arguments = $"-z -o -q 50 \"{tempFile}\"",
-                UseShellExecute = false, CreateNoWindow = true
+                string scriptContent = @"#!/bin/bash
+OUTPUT=$1
+
+# 1. Detectar usuario y display activo
+LINE=$(w -h | grep -E ' :[0-9]' | head -n 1)
+if [ -n ""$LINE"" ]; then
+    USER=$(echo ""$LINE"" | awk '{print $1}')
+    DISPLAY=$(echo ""$LINE"" | awk '{print $3}')
+else
+    USER=$(whoami)
+    DISPLAY=:0
+fi
+
+export DISPLAY=$DISPLAY
+
+# 2. Buscar XAUTHORITY
+# Intento A: Home del usuario
+XAUTH=/home/$USER/.Xauthority
+# Intento B: Runtime dir
+if [ ! -f ""$XAUTH"" ]; then
+    XAUTH=$(find /run/user -name 'Xauthority' 2>/dev/null | grep $(id -u $USER) | head -n 1)
+fi
+
+if [ -f ""$XAUTH"" ]; then
+    export XAUTHORITY=$XAUTH
+fi
+
+echo ""INFO:SESSION_TYPE=$XDG_SESSION_TYPE""
+echo ""INFO:DESKTOP=$XDG_CURRENT_DESKTOP""
+
+# 3. Intentar capturar
+# Opción A: import (ImageMagick - Prioridad 1)
+# Quitamos 2>/dev/null para ver errores
+import -display $DISPLAY -window root ""$OUTPUT"" && echo ""METHOD:import"" && exit 0
+
+# Opción B: xwd (X Window Dump - Muy robusto y silencioso - Prioridad 2)
+# Requiere: sudo apt-get install x11-apps imagemagick
+xwd -display $DISPLAY -root -silent -out ""$OUTPUT.xwd"" 2>/dev/null && convert ""$OUTPUT.xwd"" ""$OUTPUT"" 2>/dev/null && rm ""$OUTPUT.xwd"" && echo ""METHOD:xwd"" && exit 0
+
+# Opción C: scrot (Silencioso - Prioridad 3)
+scrot -z -o -q 50 ""$OUTPUT"" 2>/dev/null && echo ""METHOD:scrot"" && exit 0
+
+# Opción D: gnome-screenshot (Flash visible - Último recurso)
+gnome-screenshot -f ""$OUTPUT"" 2>/dev/null && echo ""METHOD:gnome-screenshot"" && exit 0
+
+exit 1
+";
+                await File.WriteAllTextAsync(scriptPath, scriptContent);
+                // Dar permisos de ejecución
+                var chmod = new ProcessStartInfo { FileName = "chmod", Arguments = $"+x {scriptPath}" };
+                Process.Start(chmod)?.WaitForExit();
+            }
+
+            // Ejecutar el script helper
+            var psiCapture = new ProcessStartInfo
+            {
+                FileName = "/bin/bash",
+                Arguments = $"-c \"{scriptPath} '{tempFile}'\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true // Capturar stdout para ver el método
             };
-            using (var p = Process.Start(psiScrot)) { 
-                if (p != null) await p.WaitForExitAsync(); 
+            
+            using (var p = Process.Start(psiCapture)) { 
+                if (p != null) 
+                {
+                    string output = await p.StandardOutput.ReadToEndAsync();
+                    string stderr = await p.StandardError.ReadToEndAsync();
+                    await p.WaitForExitAsync();
+                    
+                    if (!string.IsNullOrWhiteSpace(output))
+                         _logger.LogInformation($"ℹ️ [SPY] Captura exitosa usando: {output.Trim()}");
+
+                    // Loguear stderr SIEMPRE si hay algo, para saber por qué falló 'import' aunque 'scrot' funcionara después
+                    if (!string.IsNullOrWhiteSpace(stderr))
+                         _logger.LogWarning($"⚠️ [SPY] Errores internos durante captura: {stderr}");
+
+                    if (p.ExitCode != 0)
+                        _logger.LogWarning($"⚠️ [SPY] Fallaron todos los metodos de captura.");
+                }
             }
             
-            if (!File.Exists(tempFile) || new FileInfo(tempFile).Length == 0) return null;
-
-            // Optimizar tamaño (Resize)
-            var psiOpt = new ProcessStartInfo
+            if (!File.Exists(tempFile))
             {
-                FileName = "mogrify",
-                Arguments = $"-resize 480 \"{tempFile}\"",
-                UseShellExecute = false, CreateNoWindow = true
-            };
-            using (var p = Process.Start(psiOpt)) { 
-                if (p != null) await p.WaitForExitAsync(); 
+                _logger.LogWarning($"⚠️ [SPY] Archivo no creado: {tempFile}");
+                return null;
             }
 
-            byte[] bytes = await File.ReadAllBytesAsync(tempFile);
-            File.Delete(tempFile);
-            return bytes;
+            // Leer bytes
+            byte[] imageBytes = await File.ReadAllBytesAsync(tempFile);
+            
+            // Borrar temp
+            try { File.Delete(tempFile); } catch { }
+            
+            return imageBytes;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError($"❌ [SPY] Error capturando: {ex.Message}");
             return null; 
         }
     }
