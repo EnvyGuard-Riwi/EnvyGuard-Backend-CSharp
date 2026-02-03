@@ -185,47 +185,37 @@ echo ""INFO:XAUTH=$XAUTHORITY""
 
 # 3. Intentar capturar (ESTO ES LO CLAVE: sudo -u $REAL_USER)
 
-# Opción A: ffmpeg (Silent - Funciona en XWayland/X11) - PRIORIDAD 1
-if command -v ffmpeg >/dev/null; then
-    sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
-    ffmpeg -y -f x11grab -video_size 1920x1080 -i $DISPLAY -frames:v 1 ""$OUTPUT"" >/dev/null 2>&1 && \
-    echo ""METHOD:ffmpeg-silent"" && exit 0
-fi
-
-# Opción B: D-Bus GNOME (Silent Screenshot - Sin Flash) - PRIORIDAD 2
+# Opción A: D-Bus GNOME (Intento silencioso)
 if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
-    ERRS=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
-    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
-    gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
-    --method org.gnome.Shell.Screenshot.Screenshot true false ""$OUTPUT"" 2>&1)
-    if [ $? -eq 0 ]; then
-        echo ""METHOD:gnome-dbus-silent"" && exit 0
-    else
-        echo ""LOG:DBUS_ERR=$ERRS""
-    fi
-fi
-
-# Opción C: grim (Wayland Puro - PRIORIDAD 3)
-if command -v grim >/dev/null; then
     sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
     XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
-    grim ""$OUTPUT"" >/dev/null 2>&1 && echo ""METHOD:grim"" && exit 0
+    gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
+    --method org.gnome.Shell.Screenshot.Screenshot true false ""$OUTPUT"" >/dev/null 2>&1
+    if [ -s ""$OUTPUT"" ]; then echo ""METHOD:gnome-dbus-silent"" && exit 0; fi
 fi
 
-# Opción D: gnome-screenshot --no-visuals (Sin Flash) - PRIORIDAD 4
-ERRS=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
-XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
-gnome-screenshot --no-visuals -f ""$OUTPUT"" 2>&1)
-if [ $? -eq 0 ]; then
-    echo ""METHOD:gnome-screenshot-silent"" && exit 0
-else
-    echo ""LOG:SCREENSHOT_ERR=$ERRS""
+# Opción B: import (ImageMagick X11/XWayland - Silencioso)
+sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
+import -window root ""$OUTPUT"" >/dev/null 2>&1
+if [ -s ""$OUTPUT"" ]; then echo ""METHOD:import-silent"" && exit 0; fi
+
+# Opción C: scrot (X11 - Silencioso)
+sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
+scrot -z -o ""$OUTPUT"" >/dev/null 2>&1
+if [ -s ""$OUTPUT"" ]; then echo ""METHOD:scrot-silent"" && exit 0; fi
+
+# Opción D: grim (Wayland Puro - Silencioso)
+if command -v grim >/dev/null; then
+    sudo -u $REAL_USER env WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
+    grim ""$OUTPUT"" >/dev/null 2>&1
+    if [ -s ""$OUTPUT"" ]; then echo ""METHOD:grim-silent"" && exit 0; fi
 fi
 
-# Opción D: gnome-screenshot normal (Tiene flash - ÚLTIMO RECURSO)
+# Opción E: gnome-screenshot (X11/Wayland - TIENE FLASH - Último recurso)
 sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
 XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
-gnome-screenshot -f ""$OUTPUT"" 2>/dev/null && echo ""METHOD:gnome-screenshot-flash"" && exit 0
+gnome-screenshot -f ""$OUTPUT"" >/dev/null 2>&1
+if [ -s ""$OUTPUT"" ]; then echo ""METHOD:gnome-screenshot-flash"" && exit 0; fi
 
 exit 1
 ";
