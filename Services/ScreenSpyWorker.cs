@@ -171,7 +171,7 @@ done
 
 echo ""INFO:USER=$REAL_USER DISPLAY=$DISPLAY WAYLAND=$WAYLAND_DISPLAY XAUTH=$XAUTHORITY""
 
-# 3. Intentar capturar (Priorizando Silencio y Wayland)
+# 3. Intentar capturar (Prioridad: Silencioso > Wayland > Flash)
 
 # Opción A: D-Bus GNOME (Silent)
 if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
@@ -182,22 +182,26 @@ if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
     if [ -s ""$OUTPUT"" ]; then echo ""METHOD:gnome-dbus-silent"" && exit 0; fi
 fi
 
-# Opción B: grim (Wayland Puro - Silencioso) - ALTA PRIORIDAD EN 24.04
+# Opción B: grim (Wayland Nativo - Sin Flash)
 if command -v grim >/dev/null && [ -n ""$WAYLAND_DISPLAY"" ]; then
     sudo -u $REAL_USER env WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
     grim ""$OUTPUT"" >/dev/null 2>&1
-    if [ -s ""$OUTPUT"" ]; then echo ""METHOD:grim-silent"" && exit 0; fi
+    if [ -s ""$OUTPUT"" ]; then echo ""METHOD:grim-wayland-silent"" && exit 0; fi
 fi
 
-# Opción C: import (ImageMagick - Silencioso)
-sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
-import -window root ""$OUTPUT"" >/dev/null 2>&1
-if [ -s ""$OUTPUT"" ]; then echo ""METHOD:import-silent"" && exit 0; fi
+# Opción C: import (ImageMagick - XWayland/X11)
+if command -v import >/dev/null; then
+    sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
+    import -window root ""$OUTPUT"" >/dev/null 2>&1
+    if [ -s ""$OUTPUT"" ]; then echo ""METHOD:import-silent"" && exit 0; fi
+fi
 
-# Opción D: scrot (Silencioso)
-sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
-scrot -z -o ""$OUTPUT"" >/dev/null 2>&1
-if [ -s ""$OUTPUT"" ]; then echo ""METHOD:scrot-silent"" && exit 0; fi
+# Opción D: scrot (X11)
+if command -v scrot >/dev/null; then
+    sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
+    scrot -z -o ""$OUTPUT"" >/dev/null 2>&1
+    if [ -s ""$OUTPUT"" ]; then echo ""METHOD:scrot-silent"" && exit 0; fi
+fi
 
 # Opción E: gnome-screenshot (X11/Wayland - TIENE FLASH - Último recurso)
 sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
