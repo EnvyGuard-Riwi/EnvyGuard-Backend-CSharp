@@ -136,19 +136,22 @@ function find_session_vars() {
     for pid in $(pgrep -u $1 'gnome-shell|Xorg|kwin|xfwm4|lxsession'); do
         # Intentar leer el environment del proceso
         if [ -f /proc/$pid/environ ]; then
-            # Leer environ reemplazando nulls por newlines para poder usar grep bien
+            # Leer environ reemplazando nulls por newlines
             ENV_CONTENT=$(cat /proc/$pid/environ | tr '\0' '\n')
             
-            # Extraer variables exactas
-            DBUS=$(echo ""$ENV_CONTENT"" | grep '^DBUS_SESSION_BUS_ADDRESS=' | cut -d= -f2-)
+            # Extraer variables fundamentales
             DISP=$(echo ""$ENV_CONTENT"" | grep '^DISPLAY=' | cut -d= -f2-)
+            WDISP=$(echo ""$ENV_CONTENT"" | grep '^WAYLAND_DISPLAY=' | cut -d= -f2-)
             XAUTH=$(echo ""$ENV_CONTENT"" | grep '^XAUTHORITY=' | cut -d= -f2-)
+            DBUS=$(echo ""$ENV_CONTENT"" | grep '^DBUS_SESSION_BUS_ADDRESS=' | cut -d= -f2-)
+            RUNDIR=$(echo ""$ENV_CONTENT"" | grep '^XDG_RUNTIME_DIR=' | cut -d= -f2-)
             
-            # Priorizar si encontramos DISPLAY
-            if [ -n ""$DISP"" ]; then
+            if [ -n ""$DISP"" ] || [ -n ""$WDISP"" ]; then
                 export DISPLAY=$DISP
+                export WAYLAND_DISPLAY=$WDISP
                 [ -n ""$XAUTH"" ] && export XAUTHORITY=$XAUTH
                 [ -n ""$DBUS"" ] && export DBUS_SESSION_BUS_ADDRESS=$DBUS
+                [ -n ""$RUNDIR"" ] && export XDG_RUNTIME_DIR=$RUNDIR
                 return 0
             fi
         fi
@@ -156,49 +159,44 @@ function find_session_vars() {
     return 1
 }
 
-# 1. Identificar al usuario real (que no sea root ni messagebus)
-# Buscamos usuarios con sesiones activas en /run/user/
+# 1. Identificar al usuario real
 REAL_USER=""""
 for uid_dir in /run/user/[0-9]*; do
     uid=$(basename $uid_dir)
     user_name=$(id -nu $uid 2>/dev/null)
-    if [ -n ""$user_name"" ]; then
+    if [ -n ""$user_name"" ] && [ ""$user_name"" != ""messagebus"" ] && [ ""$user_name"" != ""root"" ]; then
         REAL_USER=$user_name
-        # Intentar extraer variables de esa sesión
         find_session_vars $REAL_USER
-        if [ -n ""$DISPLAY"" ]; then
-            break # Encontramos un usuario con DISPLAY válido
+        if [ -n ""$DISPLAY"" ] || [ -n ""$WAYLAND_DISPLAY"" ]; then
+            break 
         fi
     fi
 done
 
 # Si falló lo anterior, fallback clásico
-if [ -z ""$DISPLAY"" ]; then
+if [ -z ""$DISPLAY"" ] && [ -z ""$WAYLAND_DISPLAY"" ]; then
     export DISPLAY=:0
     [ -n ""$REAL_USER"" ] && export XAUTHORITY=/home/$REAL_USER/.Xauthority
 fi
 
 echo ""INFO:USER=$REAL_USER""
 echo ""INFO:DISPLAY=$DISPLAY""
-echo ""INFO:XAUTH=$XAUTHORITY""
+echo ""INFO:WAYLAND=$WAYLAND_DISPLAY""
+echo ""INFO:RUNDIR=$XDG_RUNTIME_DIR""
 
 # 3. Intentar capturar
 
-# Opción A: gnome-screenshot (Prioridad 1 - Mejor compatibilidad Wayland/X11)
-# Requiere: sudo apt install gnome-screenshot
+# Opción A: grim (Para Wayland Puro - No tiene flash) - PRIORIDAD 1
+grim ""$OUTPUT"" 2>/dev/null && echo ""METHOD:grim"" && exit 0
+
+# Opción B: gnome-screenshot (Wayland/X11 - Compatible pero tiene flash)
 gnome-screenshot -f ""$OUTPUT"" 2>/dev/null && echo ""METHOD:gnome-screenshot"" && exit 0
 
-# Opción B: import (ImageMagick - X11)
+# Opción C: import (ImageMagick - X11)
 import -window root ""$OUTPUT"" 2>/dev/null && echo ""METHOD:import"" && exit 0
-
-# Opción C: xwd (X11 - Muy robusto)
-xwd -root -silent -out ""$OUTPUT.xwd"" 2>/dev/null && convert ""$OUTPUT.xwd"" ""$OUTPUT"" 2>/dev/null && rm ""$OUTPUT.xwd"" && echo ""METHOD:xwd"" && exit 0
 
 # Opción D: scrot (X11)
 scrot -z -o ""$OUTPUT"" 2>/dev/null && echo ""METHOD:scrot"" && exit 0
-
-# Opción E: Wayland específico (grim)
-grim ""$OUTPUT"" 2>/dev/null && echo ""METHOD:grim"" && exit 0
 
 exit 1
 ";
