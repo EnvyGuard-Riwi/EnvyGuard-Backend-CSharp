@@ -125,6 +125,7 @@ public class NetworkScannerWorker : BackgroundService
                         var json = JsonSerializer.Serialize(report);
                         var body = Encoding.UTF8.GetBytes(json);
 
+                        /*
                         await channel.BasicPublishAsync(
                             exchange: "", 
                             routingKey: queueName, 
@@ -137,17 +138,18 @@ public class NetworkScannerWorker : BackgroundService
                             _logger.LogInformation($"🔄 {pc.Name ?? pc.Id.ToString()} ({pc.Ip}) cambió a ONLINE");
                         else
                             _logger.LogWarning($"🔄 {pc.Name ?? pc.Id.ToString()} ({pc.Ip}) cambió a OFFLINE");
+                        */
                     }
                 }
                 
                 // Log resumen del ciclo
                 if (statusChanges > 0)
                 {
-                    _logger.LogInformation($"📊 Ciclo completado: {statusChanges} cambios de estado detectados");
+                    // _logger.LogInformation($"📊 Ciclo completado: {statusChanges} cambios de estado detectados");
                 }
                 else
                 {
-                    _logger.LogDebug("📊 Ciclo completado: sin cambios de estado");
+                    // _logger.LogDebug("📊 Ciclo completado: sin cambios de estado");
                 }
             }
             catch (Exception ex)
