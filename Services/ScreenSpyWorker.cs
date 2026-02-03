@@ -146,12 +146,17 @@ function find_session_vars() {
             DBUS=$(echo ""$ENV_CONTENT"" | grep '^DBUS_SESSION_BUS_ADDRESS=' | cut -d= -f2-)
             RUNDIR=$(echo ""$ENV_CONTENT"" | grep '^XDG_RUNTIME_DIR=' | cut -d= -f2-)
             
+            # Fallback para XAUTH si está vacío
+            if [ -z ""$XAUTH"" ]; then
+                [ -f ""/home/$1/.Xauthority"" ] && XAUTH=""/home/$1/.Xauthority""
+            fi
+
             if [ -n ""$DISP"" ] || [ -n ""$WDISP"" ]; then
                 export DISPLAY=$DISP
                 export WAYLAND_DISPLAY=$WDISP
-                [ -n ""$XAUTH"" ] && export XAUTHORITY=$XAUTH
-                [ -n ""$DBUS"" ] && export DBUS_SESSION_BUS_ADDRESS=$DBUS
-                [ -n ""$RUNDIR"" ] && export XDG_RUNTIME_DIR=$RUNDIR
+                export XAUTHORITY=$XAUTH
+                export DBUS_SESSION_BUS_ADDRESS=$DBUS
+                export XDG_RUNTIME_DIR=$RUNDIR
                 return 0
             fi
         fi
@@ -159,7 +164,7 @@ function find_session_vars() {
     return 1
 }
 
-# 1. Identificar al usuario real (que no sea root ni messagebus)
+# 1. Identificar al usuario real
 REAL_USER=""""
 for uid_dir in /run/user/[0-9]*; do
     uid=$(basename $uid_dir)
@@ -176,10 +181,18 @@ done
 echo ""INFO:USER=$REAL_USER""
 echo ""INFO:DISPLAY=$DISPLAY""
 echo ""INFO:WAYLAND=$WAYLAND_DISPLAY""
+echo ""INFO:XAUTH=$XAUTHORITY""
 
 # 3. Intentar capturar (ESTO ES LO CLAVE: sudo -u $REAL_USER)
 
-# Opción A: D-Bus GNOME (Silent Screenshot - Sin Flash) - PRIORIDAD 1
+# Opción A: ffmpeg (Silent - Funciona en XWayland/X11) - PRIORIDAD 1
+if command -v ffmpeg >/dev/null; then
+    sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
+    ffmpeg -y -f x11grab -video_size 1920x1080 -i $DISPLAY -frames:v 1 ""$OUTPUT"" >/dev/null 2>&1 && \
+    echo ""METHOD:ffmpeg-silent"" && exit 0
+fi
+
+# Opción B: D-Bus GNOME (Silent Screenshot - Sin Flash) - PRIORIDAD 2
 if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
     ERRS=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
     XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
@@ -192,7 +205,14 @@ if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
     fi
 fi
 
-# Opción B: gnome-screenshot --no-visuals (Sin Flash) - PRIORIDAD 2-A
+# Opción C: grim (Wayland Puro - PRIORIDAD 3)
+if command -v grim >/dev/null; then
+    sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
+    grim ""$OUTPUT"" >/dev/null 2>&1 && echo ""METHOD:grim"" && exit 0
+fi
+
+# Opción D: gnome-screenshot --no-visuals (Sin Flash) - PRIORIDAD 4
 ERRS=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
 XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
 gnome-screenshot --no-visuals -f ""$OUTPUT"" 2>&1)
@@ -200,13 +220,6 @@ if [ $? -eq 0 ]; then
     echo ""METHOD:gnome-screenshot-silent"" && exit 0
 else
     echo ""LOG:SCREENSHOT_ERR=$ERRS""
-fi
-
-# Opción C: grim (Wayland Puro - PRIORIDAD 2-B)
-if command -v grim >/dev/null; then
-    sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
-    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
-    grim ""$OUTPUT"" >/dev/null 2>&1 && echo ""METHOD:grim"" && exit 0
 fi
 
 # Opción D: gnome-screenshot normal (Tiene flash - ÚLTIMO RECURSO)
