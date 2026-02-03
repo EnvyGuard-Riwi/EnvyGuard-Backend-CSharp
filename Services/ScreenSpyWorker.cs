@@ -199,39 +199,44 @@ echo ""INFO:USER=$REAL_USER DISPLAY=$DISPLAY WAYLAND=$WAYLAND_DISPLAY XAUTH=$XAU
 
 # Opción A: D-Bus GNOME (Silent)
 if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
-    sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+    ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
     XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
     gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
-    --method org.gnome.Shell.Screenshot.Screenshot true false ""$OUTPUT"" >/dev/null 2>&1
-    if [ -s ""$OUTPUT"" ]; then echo ""METHOD:gnome-dbus-silent"" && exit 0; fi
+    --method org.gnome.Shell.Screenshot.Screenshot true false ""$OUTPUT"" 2>&1)
+    if [ -s ""$OUTPUT"" ]; then echo ""METHOD:gnome-dbus-silent"" && exit 0; 
+    else echo ""DEBUG:gdbus_fail=$ERR""; fi
 fi
 
 # Opción B: grim (Wayland Nativo - Sin Flash)
 if command -v grim >/dev/null && [ -n ""$WAYLAND_DISPLAY"" ]; then
-    sudo -u $REAL_USER env WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
-    grim ""$OUTPUT"" >/dev/null 2>&1
-    if [ -s ""$OUTPUT"" ]; then echo ""METHOD:grim-wayland-silent"" && exit 0; fi
+    ERR=$(sudo -u $REAL_USER env WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
+    grim ""$OUTPUT"" 2>&1)
+    if [ -s ""$OUTPUT"" ]; then echo ""METHOD:grim-wayland-silent"" && exit 0; 
+    else echo ""DEBUG:grim_fail=$ERR""; fi
 fi
 
 # Opción C: import (ImageMagick - XWayland/X11)
 if command -v import >/dev/null; then
-    sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
-    import -window root ""$OUTPUT"" >/dev/null 2>&1
-    if [ -s ""$OUTPUT"" ]; then echo ""METHOD:import-silent"" && exit 0; fi
+    ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
+    import -window root ""$OUTPUT"" 2>&1)
+    if [ -s ""$OUTPUT"" ]; then echo ""METHOD:import-silent"" && exit 0; 
+    else echo ""DEBUG:import_fail=$ERR""; fi
 fi
 
 # Opción D: scrot (X11)
 if command -v scrot >/dev/null; then
-    sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
-    scrot -z -o ""$OUTPUT"" >/dev/null 2>&1
-    if [ -s ""$OUTPUT"" ]; then echo ""METHOD:scrot-silent"" && exit 0; fi
+    ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
+    scrot -z -o ""$OUTPUT"" 2>&1)
+    if [ -s ""$OUTPUT"" ]; then echo ""METHOD:scrot-silent"" && exit 0; 
+    else echo ""DEBUG:scrot_fail=$ERR""; fi
 fi
 
 # Opción E: gnome-screenshot (X11/Wayland - TIENE FLASH - Último recurso)
-sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
 XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
-gnome-screenshot -f ""$OUTPUT"" >/dev/null 2>&1
-if [ -s ""$OUTPUT"" ]; then echo ""METHOD:gnome-screenshot-flash"" && exit 0; fi
+gnome-screenshot -f ""$OUTPUT"" 2>&1)
+if [ -s ""$OUTPUT"" ]; then echo ""METHOD:gnome-screenshot-flash"" && exit 0; 
+else echo ""DEBUG:gnome-screenshot_fail=$ERR""; fi
 
 exit 1
 ";
