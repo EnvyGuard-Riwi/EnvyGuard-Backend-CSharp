@@ -130,47 +130,70 @@ public class ScreenSpyWorker : BackgroundService
                 string scriptContent = @"#!/bin/bash
 OUTPUT=$1
 
-# 1. Detectar usuario y display activo
-LINE=$(w -h | grep -E ' :[0-9]' | head -n 1)
-if [ -n ""$LINE"" ]; then
-    USER=$(echo ""$LINE"" | awk '{print $1}')
-    DISPLAY=$(echo ""$LINE"" | awk '{print $3}')
-else
-    USER=$(whoami)
-    DISPLAY=:0
+# Función para buscar variables en procesos del usuario
+function find_session_vars() {
+    # Buscar procesos de interfaz gráfica (gnome-shell, Xorg, kwin, etc)
+    for pid in $(pgrep -u $1 'gnome-shell|Xorg|kwin|xfwm4|lxsession'); do
+        # Intentar leer el environment del proceso
+        if [ -f /proc/$pid/environ ]; then
+            # Extraer DBUS_SESSION_BUS_ADDRESS, DISPLAY, XAUTHORITY
+            DBUS=$(grep -z DBUS_SESSION_BUS_ADDRESS /proc/$pid/environ | cut -d= -f2-)
+            DISP=$(grep -z DISPLAY /proc/$pid/environ | cut -d= -f2-)
+            XAUTH=$(grep -z XAUTHORITY /proc/$pid/environ | cut -d= -f2-)
+            
+            if [ -n ""$DISP"" ]; then
+                export DISPLAY=$DISP
+                [ -n ""$XAUTH"" ] && export XAUTHORITY=$XAUTH
+                [ -n ""$DBUS"" ] && export DBUS_SESSION_BUS_ADDRESS=$DBUS
+                return 0
+            fi
+        fi
+    done
+    return 1
+}
+
+# 1. Identificar al usuario real (que no sea root ni messagebus)
+# Buscamos usuarios con sesiones activas en /run/user/
+REAL_USER=""""
+for uid_dir in /run/user/[0-9]*; do
+    uid=$(basename $uid_dir)
+    user_name=$(id -nu $uid 2>/dev/null)
+    if [ -n ""$user_name"" ]; then
+        REAL_USER=$user_name
+        # Intentar extraer variables de esa sesión
+        find_session_vars $REAL_USER
+        if [ -n ""$DISPLAY"" ]; then
+            break # Encontramos un usuario con DISPLAY válido
+        fi
+    fi
+done
+
+# Si falló lo anterior, fallback clásico
+if [ -z ""$DISPLAY"" ]; then
+    export DISPLAY=:0
+    [ -n ""$REAL_USER"" ] && export XAUTHORITY=/home/$REAL_USER/.Xauthority
 fi
 
-export DISPLAY=$DISPLAY
-
-# 2. Buscar XAUTHORITY
-# Intento A: Home del usuario
-XAUTH=/home/$USER/.Xauthority
-# Intento B: Runtime dir
-if [ ! -f ""$XAUTH"" ]; then
-    XAUTH=$(find /run/user -name 'Xauthority' 2>/dev/null | grep $(id -u $USER) | head -n 1)
-fi
-
-if [ -f ""$XAUTH"" ]; then
-    export XAUTHORITY=$XAUTH
-fi
-
-echo ""INFO:SESSION_TYPE=$XDG_SESSION_TYPE""
-echo ""INFO:DESKTOP=$XDG_CURRENT_DESKTOP""
+echo ""INFO:USER=$REAL_USER""
+echo ""INFO:DISPLAY=$DISPLAY""
+echo ""INFO:XAUTH=$XAUTHORITY""
 
 # 3. Intentar capturar
-# Opción A: import (ImageMagick - Prioridad 1)
-# Quitamos 2>/dev/null para ver errores
-import -display $DISPLAY -window root ""$OUTPUT"" && echo ""METHOD:import"" && exit 0
+# Opción A: import (X11 - ImageMagick)
+import -window root ""$OUTPUT"" && echo ""METHOD:import"" && exit 0
 
-# Opción B: xwd (X Window Dump - Muy robusto y silencioso - Prioridad 2)
-# Requiere: sudo apt-get install x11-apps imagemagick
-xwd -display $DISPLAY -root -silent -out ""$OUTPUT.xwd"" 2>/dev/null && convert ""$OUTPUT.xwd"" ""$OUTPUT"" 2>/dev/null && rm ""$OUTPUT.xwd"" && echo ""METHOD:xwd"" && exit 0
+# Opción B: xwd (X11 - X Window Dump)
+xwd -root -silent -out ""$OUTPUT.xwd"" 2>/dev/null && convert ""$OUTPUT.xwd"" ""$OUTPUT"" 2>/dev/null && rm ""$OUTPUT.xwd"" && echo ""METHOD:xwd"" && exit 0
 
-# Opción C: scrot (Silencioso - Prioridad 3)
-scrot -z -o -q 50 ""$OUTPUT"" 2>/dev/null && echo ""METHOD:scrot"" && exit 0
+# Opción C: scrot (X11)
+scrot -z -o ""$OUTPUT"" 2>/dev/null && echo ""METHOD:scrot"" && exit 0
 
-# Opción D: gnome-screenshot (Flash visible - Último recurso)
+# Opción D: gnome-screenshot (Wayland/X11 - requiere DBUS)
+# Si estamos en Wayland, gnome-screenshot suele ser la única opción no interactiva válida a veces
 gnome-screenshot -f ""$OUTPUT"" 2>/dev/null && echo ""METHOD:gnome-screenshot"" && exit 0
+
+# Opción E: Wayland específico (grim) ?? Solo si se instala grim
+grim ""$OUTPUT"" 2>/dev/null && echo ""METHOD:grim"" && exit 0
 
 exit 1
 ";
