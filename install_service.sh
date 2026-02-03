@@ -27,7 +27,7 @@ fi
 
 # 3. Compilar y Publicar
 echo -e "${YELLOW}🔨 Compilando aplicación...${NC}"
-dotnet publish -c Release -o "$APP_DIR"
+dotnet publish "EnvyGuard.Agent.csproj" -c Release -o "$APP_DIR"
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Error en la compilación. Verifica que tengas el SDK de .NET instalado.${NC}"
