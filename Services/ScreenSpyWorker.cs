@@ -180,30 +180,39 @@ echo ""INFO:WAYLAND=$WAYLAND_DISPLAY""
 # 3. Intentar capturar (ESTO ES LO CLAVE: sudo -u $REAL_USER)
 
 # Opción A: D-Bus GNOME (Silent Screenshot - Sin Flash) - PRIORIDAD 1
-# Este método es el más limpio para GNOME Wayland
 if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
-    sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+    ERRS=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
     XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
     gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
-    --method org.gnome.Shell.Screenshot.Screenshot true false ""file://$OUTPUT"" >/dev/null 2>&1 && \
-    echo ""METHOD:gnome-dbus-silent"" && exit 0
+    --method org.gnome.Shell.Screenshot.Screenshot true false ""$OUTPUT"" 2>&1)
+    if [ $? -eq 0 ]; then
+        echo ""METHOD:gnome-dbus-silent"" && exit 0
+    else
+        echo ""LOG:DBUS_ERR=$ERRS""
+    fi
 fi
 
-# Opción B: grim (Para otros como Sway/Hyprland - Sin Flash)
+# Opción B: gnome-screenshot --no-visuals (Sin Flash) - PRIORIDAD 2-A
+ERRS=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
+gnome-screenshot --no-visuals -f ""$OUTPUT"" 2>&1)
+if [ $? -eq 0 ]; then
+    echo ""METHOD:gnome-screenshot-silent"" && exit 0
+else
+    echo ""LOG:SCREENSHOT_ERR=$ERRS""
+fi
+
+# Opción C: grim (Wayland Puro - PRIORIDAD 2-B)
 if command -v grim >/dev/null; then
     sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
     XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
-    grim ""$OUTPUT"" 2>/dev/null && echo ""METHOD:grim"" && exit 0
+    grim ""$OUTPUT"" >/dev/null 2>&1 && echo ""METHOD:grim"" && exit 0
 fi
 
-# Opción C: gnome-screenshot (X11/Wayland - Tiene flash)
+# Opción D: gnome-screenshot normal (Tiene flash - ÚLTIMO RECURSO)
 sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
 XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
-gnome-screenshot -f ""$OUTPUT"" 2>/dev/null && echo ""METHOD:gnome-screenshot"" && exit 0
-
-# Opción D: import (X11)
-sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
-import -window root ""$OUTPUT"" 2>/dev/null && echo ""METHOD:import"" && exit 0
+gnome-screenshot -f ""$OUTPUT"" 2>/dev/null && echo ""METHOD:gnome-screenshot-flash"" && exit 0
 
 exit 1
 ";
