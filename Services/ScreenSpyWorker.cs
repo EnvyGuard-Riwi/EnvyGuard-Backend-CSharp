@@ -186,19 +186,19 @@ echo ""INFO:XAUTH=$XAUTHORITY""
 
 # Opción A: gnome-screenshot (Prioridad 1 - Mejor compatibilidad Wayland/X11)
 # Requiere: sudo apt install gnome-screenshot
-gnome-screenshot -f "$OUTPUT" 2>/dev/null && echo "METHOD:gnome-screenshot" && exit 0
+gnome-screenshot -f ""$OUTPUT"" 2>/dev/null && echo ""METHOD:gnome-screenshot"" && exit 0
 
 # Opción B: import (ImageMagick - X11)
-import -window root "$OUTPUT" 2>/dev/null && echo "METHOD:import" && exit 0
+import -window root ""$OUTPUT"" 2>/dev/null && echo ""METHOD:import"" && exit 0
 
 # Opción C: xwd (X11 - Muy robusto)
-xwd -root -silent -out "$OUTPUT.xwd" 2>/dev/null && convert "$OUTPUT.xwd" "$OUTPUT" 2>/dev/null && rm "$OUTPUT.xwd" && echo "METHOD:xwd" && exit 0
+xwd -root -silent -out ""$OUTPUT.xwd"" 2>/dev/null && convert ""$OUTPUT.xwd"" ""$OUTPUT"" 2>/dev/null && rm ""$OUTPUT.xwd"" && echo ""METHOD:xwd"" && exit 0
 
 # Opción D: scrot (X11)
-scrot -z -o "$OUTPUT" 2>/dev/null && echo "METHOD:scrot" && exit 0
+scrot -z -o ""$OUTPUT"" 2>/dev/null && echo ""METHOD:scrot"" && exit 0
 
 # Opción E: Wayland específico (grim)
-grim "$OUTPUT" 2>/dev/null && echo "METHOD:grim" && exit 0
+grim ""$OUTPUT"" 2>/dev/null && echo ""METHOD:grim"" && exit 0
 
 exit 1
 ";
