@@ -159,7 +159,7 @@ function find_session_vars() {
     return 1
 }
 
-# 1. Identificar al usuario real
+# 1. Identificar al usuario real (que no sea root ni messagebus)
 REAL_USER=""""
 for uid_dir in /run/user/[0-9]*; do
     uid=$(basename $uid_dir)
@@ -173,29 +173,34 @@ for uid_dir in /run/user/[0-9]*; do
     fi
 done
 
-# Si falló lo anterior, fallback clásico
-if [ -z ""$DISPLAY"" ] && [ -z ""$WAYLAND_DISPLAY"" ]; then
-    export DISPLAY=:0
-    [ -n ""$REAL_USER"" ] && export XAUTHORITY=/home/$REAL_USER/.Xauthority
-fi
-
 echo ""INFO:USER=$REAL_USER""
 echo ""INFO:DISPLAY=$DISPLAY""
 echo ""INFO:WAYLAND=$WAYLAND_DISPLAY""
-echo ""INFO:RUNDIR=$XDG_RUNTIME_DIR""
 
-# 3. Intentar capturar
+# 2. Asegurar que el archivo de salida sea escribible por el usuario
+touch ""$OUTPUT""
+chmod 666 ""$OUTPUT""
 
-# Opción A: grim (Para Wayland Puro - No tiene flash) - PRIORIDAD 1
-grim ""$OUTPUT"" 2>/dev/null && echo ""METHOD:grim"" && exit 0
+# 3. Intentar capturar (ESTO ES LO CLAVE: sudo -u $REAL_USER)
+
+# Opción A: grim (Wayland Puro - PRIORIDAD 1 - Sin Flash)
+if command -v grim >/dev/null; then
+    sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
+    grim ""$OUTPUT"" 2>/dev/null && echo ""METHOD:grim"" && exit 0
+fi
 
 # Opción B: gnome-screenshot (Wayland/X11 - Compatible pero tiene flash)
+sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
 gnome-screenshot -f ""$OUTPUT"" 2>/dev/null && echo ""METHOD:gnome-screenshot"" && exit 0
 
 # Opción C: import (ImageMagick - X11)
+sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
 import -window root ""$OUTPUT"" 2>/dev/null && echo ""METHOD:import"" && exit 0
 
 # Opción D: scrot (X11)
+sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
 scrot -z -o ""$OUTPUT"" 2>/dev/null && echo ""METHOD:scrot"" && exit 0
 
 exit 1
