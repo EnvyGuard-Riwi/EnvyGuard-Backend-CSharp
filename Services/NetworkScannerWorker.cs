@@ -160,11 +160,11 @@ public class NetworkScannerWorker : BackgroundService
             // Esperar antes del siguiente barrido (configurable, default 30 seg)
             await Task.Delay(scanIntervalMs, stoppingToken);
         }
-        // */
+
         
         await Task.CompletedTask;
     }
-    }
+
 
     // --- MÉTODOS AUXILIARES ---
 
