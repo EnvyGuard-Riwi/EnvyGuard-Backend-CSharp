@@ -136,11 +136,15 @@ function find_session_vars() {
     for pid in $(pgrep -u $1 'gnome-shell|Xorg|kwin|xfwm4|lxsession'); do
         # Intentar leer el environment del proceso
         if [ -f /proc/$pid/environ ]; then
-            # Extraer DBUS_SESSION_BUS_ADDRESS, DISPLAY, XAUTHORITY
-            DBUS=$(grep -z DBUS_SESSION_BUS_ADDRESS /proc/$pid/environ | cut -d= -f2-)
-            DISP=$(grep -z DISPLAY /proc/$pid/environ | cut -d= -f2-)
-            XAUTH=$(grep -z XAUTHORITY /proc/$pid/environ | cut -d= -f2-)
+            # Leer environ reemplazando nulls por newlines para poder usar grep bien
+            ENV_CONTENT=$(cat /proc/$pid/environ | tr '\0' '\n')
             
+            # Extraer variables exactas
+            DBUS=$(echo ""$ENV_CONTENT"" | grep '^DBUS_SESSION_BUS_ADDRESS=' | cut -d= -f2-)
+            DISP=$(echo ""$ENV_CONTENT"" | grep '^DISPLAY=' | cut -d= -f2-)
+            XAUTH=$(echo ""$ENV_CONTENT"" | grep '^XAUTHORITY=' | cut -d= -f2-)
+            
+            # Priorizar si encontramos DISPLAY
             if [ -n ""$DISP"" ]; then
                 export DISPLAY=$DISP
                 [ -n ""$XAUTH"" ] && export XAUTHORITY=$XAUTH
