@@ -177,31 +177,33 @@ echo ""INFO:USER=$REAL_USER""
 echo ""INFO:DISPLAY=$DISPLAY""
 echo ""INFO:WAYLAND=$WAYLAND_DISPLAY""
 
-# 2. Asegurar que el archivo de salida sea escribible por el usuario
-touch ""$OUTPUT""
-chmod 666 ""$OUTPUT""
-
 # 3. Intentar capturar (ESTO ES LO CLAVE: sudo -u $REAL_USER)
 
-# Opción A: grim (Wayland Puro - PRIORIDAD 1 - Sin Flash)
+# Opción A: D-Bus GNOME (Silent Screenshot - Sin Flash) - PRIORIDAD 1
+# Este método es el más limpio para GNOME Wayland
+if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
+    sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
+    gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
+    --method org.gnome.Shell.Screenshot.Screenshot true false ""file://$OUTPUT"" >/dev/null 2>&1 && \
+    echo ""METHOD:gnome-dbus-silent"" && exit 0
+fi
+
+# Opción B: grim (Para otros como Sway/Hyprland - Sin Flash)
 if command -v grim >/dev/null; then
     sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
     XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
     grim ""$OUTPUT"" 2>/dev/null && echo ""METHOD:grim"" && exit 0
 fi
 
-# Opción B: gnome-screenshot (Wayland/X11 - Compatible pero tiene flash)
+# Opción C: gnome-screenshot (X11/Wayland - Tiene flash)
 sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
 XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
 gnome-screenshot -f ""$OUTPUT"" 2>/dev/null && echo ""METHOD:gnome-screenshot"" && exit 0
 
-# Opción C: import (ImageMagick - X11)
+# Opción D: import (X11)
 sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
 import -window root ""$OUTPUT"" 2>/dev/null && echo ""METHOD:import"" && exit 0
-
-# Opción D: scrot (X11)
-sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
-scrot -z -o ""$OUTPUT"" 2>/dev/null && echo ""METHOD:scrot"" && exit 0
 
 exit 1
 ";
