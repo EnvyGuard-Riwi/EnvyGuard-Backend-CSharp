@@ -62,6 +62,7 @@ public class ScreenSpyWorker : BackgroundService
 
                 // 2. Bucle de Vigilancia
                 string lastHash = "";
+                int iterationsSinceLastSend = 0;
                 
                 while (connection.IsOpen && !stoppingToken.IsCancellationRequested)
                 {
@@ -72,8 +73,13 @@ public class ScreenSpyWorker : BackgroundService
                         if (imageBytes != null && imageBytes.Length > 0)
                         {
                             string currentHash = CalcularHash(imageBytes);
-                            if (currentHash != lastHash)
+                            _logger.LogInformation($"🔍 [SPY] Imagen procesada. Tamaño: {imageBytes.Length} bytes. Hash: {currentHash.Substring(0, 8)}...");
+
+                            if (currentHash != lastHash || iterationsSinceLastSend >= 10)
                             {
+                                if (currentHash == lastHash) 
+                                    _logger.LogInformation("🔄 [SPY] Forzando envío de imagen estática (heartbeat de video)");
+
                                 string base64Image = Convert.ToBase64String(imageBytes);
                                 
                                 var payload = new { 
@@ -84,7 +90,7 @@ public class ScreenSpyWorker : BackgroundService
                                 
                                 var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload));
 
-                                // Enviar al Topic (Para que Java/React lo vean)
+                                // Enviar al Topic
                                 var props = new BasicProperties 
                                 { 
                                     Priority = 0,
@@ -92,13 +98,31 @@ public class ScreenSpyWorker : BackgroundService
                                     DeliveryMode = DeliveryModes.Persistent
                                 };
                                 
-                                await channel.BasicPublishAsync(exchange: "amq.topic", routingKey: "spy.screens", mandatory: false, basicProperties: props, body: body, cancellationToken: stoppingToken);
-                                
-                                _logger.LogInformation($"📸 [SPY] Foto enviada: {imageBytes.Length / 1024} KB");
-                                lastHash = currentHash;
+                                try 
+                                {
+                                    await channel.BasicPublishAsync(exchange: "amq.topic", routingKey: "spy.screens", mandatory: false, basicProperties: props, body: body, cancellationToken: stoppingToken);
+                                    _logger.LogInformation($"📸 [SPY] Foto enviada: {imageBytes.Length / 1024} KB (PC: {_pcId})");
+                                    lastHash = currentHash;
+                                    iterationsSinceLastSend = 0;
+                                }
+                                catch (Exception pushEx)
+                                {
+                                    _logger.LogError($"❌ [SPY] Error publicando en RabbitMQ: {pushEx.Message}");
+                                }
+                            }
+                            else 
+                            {
+                                _logger.LogInformation("⏭️ [SPY] Imagen idéntica a la anterior. Omitiendo envío.");
+                                iterationsSinceLastSend++;
                             }
                         }
-                        await Task.Delay(4000, stoppingToken); // Frecuencia: 4 segundos
+                        else 
+                        {
+                            _logger.LogWarning("⚠️ [SPY] La captura retornó 0 bytes o null.");
+                        }
+                        
+                        // Esperar un poco para no saturar
+                        await Task.Delay(2000, stoppingToken);
                     }
                     else
                     {
