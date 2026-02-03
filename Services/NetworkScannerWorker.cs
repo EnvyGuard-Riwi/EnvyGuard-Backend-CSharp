@@ -119,7 +119,10 @@ public class NetworkScannerWorker : BackgroundService
                             Timestamp = DateTime.UtcNow
                         };
 
-                        var json = JsonSerializer.Serialize(report);
+                        var json = JsonSerializer.Serialize(report, new JsonSerializerOptions 
+                        { 
+                            PropertyNamingPolicy = JsonNamingPolicy.CamelCase 
+                        });
                         var body = Encoding.UTF8.GetBytes(json);
 
                         await channel.BasicPublishAsync(
