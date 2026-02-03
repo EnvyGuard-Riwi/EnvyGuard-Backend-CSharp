@@ -78,6 +78,10 @@ public class NetworkScannerWorker : BackgroundService
                     arguments: null,
                     cancellationToken: stoppingToken);
 
+                // PURGAR COLA: Limpiar mensajes viejos/malformados que puedan estar bloqueando al backend
+                await channel.QueuePurgeAsync(queueName, cancellationToken: stoppingToken);
+                _logger.LogWarning($"🗑️ Se purgó la cola '{queueName}' para asegurar un inicio limpio.");
+
                 _logger.LogInformation($"📡 Escaneando {pcsToScan.Count} dispositivos...");
 
                 int statusChanges = 0;
@@ -109,26 +113,39 @@ public class NetworkScannerWorker : BackgroundService
                     {
                         statusChanges++;
                         
-                        var report = new 
-                        {
-                            PcId = pc.Id,
-                            PcName = pc.Name ?? pc.Id.ToString(),
-                            IpAddress = pc.Ip,
-                            MacAddress = pc.Mac,
-                            Status = isOnline ? "ONLINE" : "OFFLINE",
-                            Timestamp = DateTime.UtcNow
-                        };
+                            // Revertir a objeto anónimo estable con nombres explícitos
+                            var report = new 
+                            {
+                                id = pc.Id,          // minúscula explícita
+                                nombrePc = pc.Name ?? pc.Id.ToString(),
+                                ip = pc.Ip,
+                                mac = pc.Mac ?? "",
+                                status = isOnline ? "ONLINE" : "OFFLINE", // minúscula explícita
+                                lastSeen = DateTime.UtcNow, // minúscula explícita
+                                last_seen = DateTime.UtcNow // Por si acaso el backend usa snake_case directo
+                            };
 
                         var json = JsonSerializer.Serialize(report, new JsonSerializerOptions 
                         { 
-                            PropertyNamingPolicy = JsonNamingPolicy.CamelCase 
+                            PropertyNamingPolicy = null // Ya pusimos los nombres a mano
                         });
                         var body = Encoding.UTF8.GetBytes(json);
+
+                        // DEBUG: Ver qué estamos enviando exactamente
+                        _logger.LogInformation($"📤 Enviando actualización de estado: {json}");
+
+                        var props = new BasicProperties
+                        {
+                            ContentType = "application/json",
+                            DeliveryMode = DeliveryModes.Persistent,
+                            Priority = 0
+                        };
 
                         await channel.BasicPublishAsync(
                             exchange: "", 
                             routingKey: queueName, 
                             mandatory: false, 
+                            basicProperties: props,
                             body: body, 
                             cancellationToken: stoppingToken);
                         

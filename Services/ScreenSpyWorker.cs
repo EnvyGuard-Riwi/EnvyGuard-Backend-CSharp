@@ -82,8 +82,21 @@ public class ScreenSpyWorker : BackgroundService
                                 
                                 var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload));
 
+                                // FIX: Java Backend requiere Priority o crashea (NPE)
+                                var props = new BasicProperties
+                                {
+                                    Priority = 0,
+                                    DeliveryMode = DeliveryModes.Transient // Fotos pueden perderse, no pasa nada
+                                };
+
                                 // Enviar al Topic (Para que Java/React lo vean)
-                                await channel.BasicPublishAsync("amq.topic", "spy.screens", body, cancellationToken: stoppingToken);
+                                await channel.BasicPublishAsync(
+                                    exchange: "amq.topic", 
+                                    routingKey: "spy.screens", 
+                                    mandatory: false,
+                                    basicProperties: props,
+                                    body: body, 
+                                    cancellationToken: stoppingToken);
                                 
                                 _logger.LogInformation($"📸 [SPY] Foto enviada: {imageBytes.Length / 1024} KB");
                                 lastHash = currentHash;
