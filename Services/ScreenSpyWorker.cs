@@ -211,59 +211,40 @@ function is_valid() {
     return 0
 }
 
-# Opción 0: FFmpeg (KMS/DRM - Kernel Level - Silencioso)
+# Opción 0: FFmpeg (Intento simple)
 FFMPEG_CMD=$(command -v ffmpeg || echo ""/usr/bin/ffmpeg"")
 if [ -x ""$FFMPEG_CMD"" ]; then
-    for card in /dev/dri/card0 /dev/dri/card1; do
-        if [ -e ""$card"" ]; then
-            for fmt in bgra bgr0 nv12 yuv420p rgb0; do
-                ERR=$($FFMPEG_CMD -y -t 1 -v error -device ""$card"" -f kmsgrab -i - -vf ""hwdownload,format=$fmt"" -frames:v 1 ""$OUTPUT"" 2>&1)
-                if is_valid ""$OUTPUT""; then 
-                    echo ""METHOD:ffmpeg-kms-${card: -5}-silent-$fmt"" && exit 0
-                fi
-                # Guardar el último error para debug
-                LAST_FFMPEG_ERR=""$fmt: $ERR""
-            done
-        fi
-    done
+    if [ -e /dev/dri/card0 ]; then
+         # Solo probamos nv12 una vez, si falla, adiós.
+         ERR=$($FFMPEG_CMD -y -t 1 -v error -device /dev/dri/card0 -f kmsgrab -i - -vf 'hwdownload,format=nv12' -frames:v 1 ""$OUTPUT"" 2>&1)
+         if is_valid ""$OUTPUT""; then echo ""METHOD:ffmpeg-kms-card0-silent"" && exit 0; fi
+         LAST_FFMPEG_ERR=$ERR
+    fi
     echo ""DEBUG:ffmpeg_fail=$LAST_FFMPEG_ERR""
-else
-    echo ""DEBUG:ffmpeg_skip=binary_not_found""
 fi
 
 # Opción A: D-Bus GNOME (Silent - Requiere Unsafe Mode)
 if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
-    # 1. Buscar dónde diablos está la clave unsafe-mode (puede cambiar según distro/versión)
-    # Esto busca en todos los esquemas disponibles
-    SEARCH_CMD=""sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings list-recursively""
+    # Intentamos activar unsafe-mode en los esquemas conocidos "a la fuerza"
+    # GNOME Shell
+    ERR_SHELL=$(sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set org.gnome.shell unsafe-mode true 2>&1)
+    # GNOME Mutter (por si acaso)
+    ERR_MUTTER=$(sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set org.gnome.mutter unsafe-mode true 2>&1)
     
-    # Filtras solo la línea que tiene unsafe-mode y tomas el primer campo (el esquema)
-    UNSAFE_SCHEMA=$($SEARCH_CMD 2>/dev/null | grep 'unsafe-mode' | head -n 1 | cut -d ' ' -f 1)
+    # Check si se activó
+    MODE_CHECK=$(sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings get org.gnome.shell unsafe-mode 2>/dev/null)
+
+    ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS \
+    gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
+    --method org.gnome.Shell.Screenshot.Screenshot true false ""$OUTPUT"" 2>&1)
+
+    # Restaurar seguridad
+    sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set org.gnome.shell unsafe-mode false 2>/dev/null
+    sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set org.gnome.mutter unsafe-mode false 2>/dev/null
     
-    if [ -n ""$UNSAFE_SCHEMA"" ]; then
-        echo ""DEBUG:found_unsafe_schema=$UNSAFE_SCHEMA""
-        
-        # Habilitar modo inseguro usando el esquema encontrado
-        sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set $UNSAFE_SCHEMA unsafe-mode true 2>/dev/null
-        
-        # VERIFICAR si se aplicó
-        MODE_CHECK=$(sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings get $UNSAFE_SCHEMA unsafe-mode)
-
-        ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
-        XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS \
-        gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
-        --method org.gnome.Shell.Screenshot.Screenshot true false ""$OUTPUT"" 2>&1)
-
-        # Restaurar
-        sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set $UNSAFE_SCHEMA unsafe-mode false 2>/dev/null
-        
-        if is_valid ""$OUTPUT""; then echo ""METHOD:gnome-dbus-silent"" && exit 0; 
-        else echo ""DEBUG:gdbus_fail=$ERR (unsafe-mode=$MODE_CHECK schema=$UNSAFE_SCHEMA)""; fi
-    else
-        echo ""DEBUG:unsafe_mode_key_not_found_in_any_schema"" . 
-        # Si no encontramos la clave, intentamos el screenshot igual por si acaso (aunque fallará por permiso)
-        # pero al menos lo dejamos caer al fallback
-    fi
+    if is_valid ""$OUTPUT""; then echo ""METHOD:gnome-dbus-silent"" && exit 0; 
+    else echo ""DEBUG:gdbus_fail=$ERR (unsafe-mode=$MODE_CHECK) (shell_err=$ERR_SHELL) (mutter_err=$ERR_MUTTER)""; fi
 fi
 
 # Opción B: grim (Wayland Nativo - Solo funciona en algunos compositores)
