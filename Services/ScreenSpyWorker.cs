@@ -225,7 +225,7 @@ fi
 
 # Opción A: D-Bus GNOME (Silent - Requiere Unsafe Mode)
 if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
-    # Intentamos activar unsafe-mode en los esquemas conocidos "a la fuerza"
+    # Intentamos activar unsafe-mode en los esquemas conocidos a la fuerza
     # GNOME Shell
     ERR_SHELL=$(sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set org.gnome.shell unsafe-mode true 2>&1)
     # GNOME Mutter (por si acaso)
