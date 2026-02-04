@@ -211,11 +211,27 @@ function is_valid() {
 
 # Opción 0: FFmpeg (KMS/DRM - Kernel Level - Silencioso)
 # Intenta capturar directamente del hardware de video, saltándose la UI de GNOME (y el flash).
-if command -v ffmpeg >/dev/null && [ -e /dev/dri/card0 ]; then
-    # NOTA: Se ejecuta como ROOT (sin sudo -u), ya que kmsgrab requiere acceso a /dev/dri
-    ERR=$(ffmpeg -y -t 3 -v error -device /dev/dri/card0 -f kmsgrab -i - -vf 'hwdownload,format=bgr0' -frames:v 1 ""$OUTPUT"" 2>&1)
-    if is_valid ""$OUTPUT""; then echo ""METHOD:ffmpeg-kms-silent"" && exit 0;
-    else echo ""DEBUG:ffmpeg_fail=$ERR""; fi
+FFMPEG_CMD=$(command -v ffmpeg || echo "/usr/bin/ffmpeg")
+if [ -x "$FFMPEG_CMD" ]; then
+    # Intentar CARD 0
+    if [ -e /dev/dri/card0 ]; then
+        ERR=$($FFMPEG_CMD -y -t 2 -v error -device /dev/dri/card0 -f kmsgrab -i - -vf 'hwdownload,format=bgr0' -frames:v 1 ""$OUTPUT"" 2>&1)
+        if is_valid ""$OUTPUT""; then echo ""METHOD:ffmpeg-kms-card0-silent"" && exit 0;
+        else echo ""DEBUG:ffmpeg_card0_fail=$ERR""; fi
+    fi
+    
+    # Intentar CARD 1 (Por si es doble GPU o card0 no es el display)
+    if [ -e /dev/dri/card1 ]; then
+        ERR=$($FFMPEG_CMD -y -t 2 -v error -device /dev/dri/card1 -f kmsgrab -i - -vf 'hwdownload,format=bgr0' -frames:v 1 ""$OUTPUT"" 2>&1)
+        if is_valid ""$OUTPUT""; then echo ""METHOD:ffmpeg-kms-card1-silent"" && exit 0;
+        else echo ""DEBUG:ffmpeg_card1_fail=$ERR""; fi
+    fi
+    
+    if [ ! -e /dev/dri/card0 ] && [ ! -e /dev/dri/card1 ]; then
+         echo ""DEBUG:ffmpeg_skip=no_dri_cards""
+    fi
+else
+    echo ""DEBUG:ffmpeg_skip=binary_not_found""
 fi
 
 # Opción A: D-Bus GNOME (Silent)
