@@ -211,9 +211,9 @@ function is_valid() {
 
 # Opción 0: FFmpeg (KMS/DRM - Kernel Level - Silencioso)
 # Intenta capturar directamente del hardware de video, saltándose la UI de GNOME (y el flash).
-FFMPEG_CMD=$(command -v ffmpeg || echo "/usr/bin/ffmpeg")
-if [ -x "$FFMPEG_CMD" ]; then
-    # Intentar CARD 0
+FFMPEG_CMD=$(command -v ffmpeg || echo ""/usr/bin/ffmpeg"")
+if [ -x ""$FFMPEG_CMD"" ]; then
+    # Intentar CARD 0 (Mejorado para detectar errores)
     if [ -e /dev/dri/card0 ]; then
         ERR=$($FFMPEG_CMD -y -t 2 -v error -device /dev/dri/card0 -f kmsgrab -i - -vf 'hwdownload,format=bgr0' -frames:v 1 ""$OUTPUT"" 2>&1)
         if is_valid ""$OUTPUT""; then echo ""METHOD:ffmpeg-kms-card0-silent"" && exit 0;
