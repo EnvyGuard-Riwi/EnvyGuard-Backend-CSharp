@@ -213,16 +213,16 @@ function is_valid() {
 # Intenta capturar directamente del hardware de video, saltándose la UI de GNOME (y el flash).
 FFMPEG_CMD=$(command -v ffmpeg || echo ""/usr/bin/ffmpeg"")
 if [ -x ""$FFMPEG_CMD"" ]; then
-    # Intentar CARD 0 (Mejorado para detectar errores)
+    # Intentar CARD 0 (Auto-formato)
     if [ -e /dev/dri/card0 ]; then
-        ERR=$($FFMPEG_CMD -y -t 2 -v error -device /dev/dri/card0 -f kmsgrab -i - -vf 'hwdownload,format=nv12' -frames:v 1 ""$OUTPUT"" 2>&1)
+        ERR=$($FFMPEG_CMD -y -t 2 -v error -device /dev/dri/card0 -f kmsgrab -i - -vf 'hwdownload' -frames:v 1 ""$OUTPUT"" 2>&1)
         if is_valid ""$OUTPUT""; then echo ""METHOD:ffmpeg-kms-card0-silent"" && exit 0;
         else echo ""DEBUG:ffmpeg_card0_fail=$ERR""; fi
     fi
     
-    # Intentar CARD 1 (Por si es doble GPU o card0 no es el display)
+    # Intentar CARD 1 (Auto-formato)
     if [ -e /dev/dri/card1 ]; then
-        ERR=$($FFMPEG_CMD -y -t 2 -v error -device /dev/dri/card1 -f kmsgrab -i - -vf 'hwdownload,format=nv12' -frames:v 1 ""$OUTPUT"" 2>&1)
+        ERR=$($FFMPEG_CMD -y -t 2 -v error -device /dev/dri/card1 -f kmsgrab -i - -vf 'hwdownload' -frames:v 1 ""$OUTPUT"" 2>&1)
         if is_valid ""$OUTPUT""; then echo ""METHOD:ffmpeg-kms-card1-silent"" && exit 0;
         else echo ""DEBUG:ffmpeg_card1_fail=$ERR""; fi
     fi
@@ -234,12 +234,19 @@ else
     echo ""DEBUG:ffmpeg_skip=binary_not_found""
 fi
 
-# Opción A: D-Bus GNOME (Silent)
+# Opción A: D-Bus GNOME (Silent - Requiere Unsafe Mode para saltar seguridad)
 if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
+    # Intentar habilitar modo inseguro temporalmente (permite screenshots silenciosos)
+    sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS gsettings set org.gnome.shell unsafe-mode true 2>/dev/null
+
     ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
     XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
     gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
     --method org.gnome.Shell.Screenshot.Screenshot true false ""$OUTPUT"" 2>&1)
+
+    # Restaurar seguridad
+    sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS gsettings set org.gnome.shell unsafe-mode false 2>/dev/null
+    
     if is_valid ""$OUTPUT""; then echo ""METHOD:gnome-dbus-silent"" && exit 0; 
     else echo ""DEBUG:gdbus_fail=$ERR""; fi
 fi
