@@ -163,6 +163,7 @@ function find_session_vars() {
             XAUTH=$(echo ""$ENV_CONTENT"" | grep '^XAUTHORITY=' | cut -d= -f2-)
             DBUS=$(echo ""$ENV_CONTENT"" | grep '^DBUS_SESSION_BUS_ADDRESS=' | cut -d= -f2-)
             RUNDIR=$(echo ""$ENV_CONTENT"" | grep '^XDG_RUNTIME_DIR=' | cut -d= -f2-)
+            XDATAD=$(echo ""$ENV_CONTENT"" | grep '^XDG_DATA_DIRS=' | cut -d= -f2-)
             
             # Fallback corregido para XAUTH
             if [ -z ""$XAUTH"" ] && [ -f ""/home/$1/.Xauthority"" ]; then
@@ -175,6 +176,7 @@ function find_session_vars() {
                 export XAUTHORITY=$XAUTH
                 export DBUS_SESSION_BUS_ADDRESS=$DBUS
                 export XDG_RUNTIME_DIR=$RUNDIR
+                export XDG_DATA_DIRS=$XDATAD
                 return 0
             fi
         fi
@@ -232,18 +234,18 @@ fi
 # Opción A: D-Bus GNOME (Silent - Requiere Unsafe Mode)
 if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
     # Habilitar modo inseguro
-    sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS gsettings set org.gnome.shell unsafe-mode true 2>/dev/null
+    sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set org.gnome.shell unsafe-mode true 2>/dev/null
     
     # VERIFICAR si se aplicó
-    MODE_CHECK=$(sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS gsettings get org.gnome.shell unsafe-mode)
+    MODE_CHECK=$(sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings get org.gnome.shell unsafe-mode)
 
     ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
-    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
+    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS \
     gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
     --method org.gnome.Shell.Screenshot.Screenshot true false ""$OUTPUT"" 2>&1)
 
     # Restaurar
-    sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS gsettings set org.gnome.shell unsafe-mode false 2>/dev/null
+    sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set org.gnome.shell unsafe-mode false 2>/dev/null
     
     if is_valid ""$OUTPUT""; then echo ""METHOD:gnome-dbus-silent"" && exit 0; 
     else echo ""DEBUG:gdbus_fail=$ERR (unsafe-mode=$MODE_CHECK)""; fi
