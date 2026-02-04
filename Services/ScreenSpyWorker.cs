@@ -215,14 +215,14 @@ FFMPEG_CMD=$(command -v ffmpeg || echo ""/usr/bin/ffmpeg"")
 if [ -x ""$FFMPEG_CMD"" ]; then
     # Intentar CARD 0 (Mejorado para detectar errores)
     if [ -e /dev/dri/card0 ]; then
-        ERR=$($FFMPEG_CMD -y -t 2 -v error -device /dev/dri/card0 -f kmsgrab -i - -vf 'hwdownload,format=bgr0' -frames:v 1 ""$OUTPUT"" 2>&1)
+        ERR=$($FFMPEG_CMD -y -t 2 -v error -device /dev/dri/card0 -f kmsgrab -i - -vf 'hwdownload,format=bgra' -frames:v 1 ""$OUTPUT"" 2>&1)
         if is_valid ""$OUTPUT""; then echo ""METHOD:ffmpeg-kms-card0-silent"" && exit 0;
         else echo ""DEBUG:ffmpeg_card0_fail=$ERR""; fi
     fi
     
     # Intentar CARD 1 (Por si es doble GPU o card0 no es el display)
     if [ -e /dev/dri/card1 ]; then
-        ERR=$($FFMPEG_CMD -y -t 2 -v error -device /dev/dri/card1 -f kmsgrab -i - -vf 'hwdownload,format=bgr0' -frames:v 1 ""$OUTPUT"" 2>&1)
+        ERR=$($FFMPEG_CMD -y -t 2 -v error -device /dev/dri/card1 -f kmsgrab -i - -vf 'hwdownload,format=bgra' -frames:v 1 ""$OUTPUT"" 2>&1)
         if is_valid ""$OUTPUT""; then echo ""METHOD:ffmpeg-kms-card1-silent"" && exit 0;
         else echo ""DEBUG:ffmpeg_card1_fail=$ERR""; fi
     fi
