@@ -198,7 +198,6 @@ echo ""INFO:USER=$REAL_USER DISPLAY=$DISPLAY WAYLAND=$WAYLAND_DISPLAY XAUTH=$XAU
 # 3. Intentar capturar (Prioridad: Silencioso > Wayland > Flash)
 
 # Función para validar si la imagen es válida (no negra/vacía)
-# En 1080p, una imagen negra JPG suele pesar < 40KB.
 function is_valid() {
     [ -s ""$1"" ] || return 1
     size=$(stat -c%s ""$1"")
@@ -209,6 +208,15 @@ function is_valid() {
     fi
     return 0
 }
+
+# Opción 0: FFmpeg (KMS/DRM - Kernel Level - Silencioso)
+# Intenta capturar directamente del hardware de video, saltándose la UI de GNOME (y el flash).
+if command -v ffmpeg >/dev/null && [ -e /dev/dri/card0 ]; then
+    # NOTA: Se ejecuta como ROOT (sin sudo -u), ya que kmsgrab requiere acceso a /dev/dri
+    ERR=$(ffmpeg -y -t 3 -v error -device /dev/dri/card0 -f kmsgrab -i - -vf 'hwdownload,format=bgr0' -frames:v 1 ""$OUTPUT"" 2>&1)
+    if is_valid ""$OUTPUT""; then echo ""METHOD:ffmpeg-kms-silent"" && exit 0;
+    else echo ""DEBUG:ffmpeg_fail=$ERR""; fi
+fi
 
 # Opción A: D-Bus GNOME (Silent)
 if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
