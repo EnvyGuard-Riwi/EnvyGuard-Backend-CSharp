@@ -233,22 +233,37 @@ fi
 
 # Opción A: D-Bus GNOME (Silent - Requiere Unsafe Mode)
 if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
-    # Habilitar modo inseguro
-    sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set org.gnome.shell unsafe-mode true 2>/dev/null
+    # 1. Buscar dónde diablos está la clave unsafe-mode (puede cambiar según distro/versión)
+    # Esto busca en todos los esquemas disponibles
+    SEARCH_CMD=""sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings list-recursively""
     
-    # VERIFICAR si se aplicó
-    MODE_CHECK=$(sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings get org.gnome.shell unsafe-mode)
-
-    ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
-    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS \
-    gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
-    --method org.gnome.Shell.Screenshot.Screenshot true false ""$OUTPUT"" 2>&1)
-
-    # Restaurar
-    sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set org.gnome.shell unsafe-mode false 2>/dev/null
+    # Filtras solo la línea que tiene unsafe-mode y tomas el primer campo (el esquema)
+    UNSAFE_SCHEMA=$($SEARCH_CMD 2>/dev/null | grep 'unsafe-mode' | head -n 1 | cut -d ' ' -f 1)
     
-    if is_valid ""$OUTPUT""; then echo ""METHOD:gnome-dbus-silent"" && exit 0; 
-    else echo ""DEBUG:gdbus_fail=$ERR (unsafe-mode=$MODE_CHECK)""; fi
+    if [ -n ""$UNSAFE_SCHEMA"" ]; then
+        echo ""DEBUG:found_unsafe_schema=$UNSAFE_SCHEMA""
+        
+        # Habilitar modo inseguro usando el esquema encontrado
+        sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set $UNSAFE_SCHEMA unsafe-mode true 2>/dev/null
+        
+        # VERIFICAR si se aplicó
+        MODE_CHECK=$(sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings get $UNSAFE_SCHEMA unsafe-mode)
+
+        ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+        XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS \
+        gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
+        --method org.gnome.Shell.Screenshot.Screenshot true false ""$OUTPUT"" 2>&1)
+
+        # Restaurar
+        sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set $UNSAFE_SCHEMA unsafe-mode false 2>/dev/null
+        
+        if is_valid ""$OUTPUT""; then echo ""METHOD:gnome-dbus-silent"" && exit 0; 
+        else echo ""DEBUG:gdbus_fail=$ERR (unsafe-mode=$MODE_CHECK schema=$UNSAFE_SCHEMA)""; fi
+    else
+        echo ""DEBUG:unsafe_mode_key_not_found_in_any_schema"" . 
+        # Si no encontramos la clave, intentamos el screenshot igual por si acaso (aunque fallará por permiso)
+        # pero al menos lo dejamos caer al fallback
+    fi
 fi
 
 # Opción B: grim (Wayland Nativo - Solo funciona en algunos compositores)
