@@ -213,58 +213,25 @@ function is_valid() {
 
 # Opción 0: FFmpeg (Intento simple)
 FFMPEG_CMD=$(command -v ffmpeg || echo ""/usr/bin/ffmpeg"")
+# Opción 0: FFmpeg (Intento simple)
+FFMPEG_CMD=$(command -v ffmpeg || echo ""/usr/bin/ffmpeg"")
 if [ -x ""$FFMPEG_CMD"" ]; then
     if [ -e /dev/dri/card0 ]; then
-         # Solo probamos nv12 una vez, si falla, adiós.
+         # Intento 1: NV12
          ERR=$($FFMPEG_CMD -y -t 1 -v error -device /dev/dri/card0 -f kmsgrab -i - -vf 'hwdownload,format=nv12' -frames:v 1 ""$OUTPUT"" 2>&1)
-         if is_valid ""$OUTPUT""; then echo ""METHOD:ffmpeg-kms-card0-silent"" && exit 0; fi
+         if is_valid ""$OUTPUT""; then echo ""METHOD:ffmpeg-kms-card0-silent-nv12"" && exit 0; fi
+         
+         # Intento 2: YUYV422 (Común en algunos drivers)
+         ERR=$($FFMPEG_CMD -y -t 1 -v error -device /dev/dri/card0 -f kmsgrab -i - -vf 'hwdownload,format=yuyv422' -frames:v 1 ""$OUTPUT"" 2>&1)
+         if is_valid ""$OUTPUT""; then echo ""METHOD:ffmpeg-kms-card0-silent-yuyv422"" && exit 0; fi
+         
          LAST_FFMPEG_ERR=$ERR
     fi
     echo ""DEBUG:ffmpeg_fail=$LAST_FFMPEG_ERR""
 fi
 
-# Opción A: D-Bus GNOME (Silent - Requiere Unsafe Mode)
-if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
-    # Intentamos activar unsafe-mode en los esquemas conocidos a la fuerza
-    # GNOME Shell
-    ERR_SHELL=$(sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set org.gnome.shell unsafe-mode true 2>&1)
-    # GNOME Mutter (por si acaso)
-    ERR_MUTTER=$(sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set org.gnome.mutter unsafe-mode true 2>&1)
-    
-    # Check si se activó
-    MODE_CHECK=$(sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings get org.gnome.shell unsafe-mode 2>/dev/null)
-
-    ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
-    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS \
-    gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
-    --method org.gnome.Shell.Screenshot.Screenshot true false ""$OUTPUT"" 2>&1)
-
-    # Restaurar seguridad
-    sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set org.gnome.shell unsafe-mode false 2>/dev/null
-    sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set org.gnome.mutter unsafe-mode false 2>/dev/null
-    
-    if is_valid ""$OUTPUT""; then echo ""METHOD:gnome-dbus-silent"" && exit 0; 
-    else echo ""DEBUG:gdbus_fail=$ERR (unsafe-mode=$MODE_CHECK) (shell_err=$ERR_SHELL) (mutter_err=$ERR_MUTTER)""; fi
-fi
-
-# Opción B: grim (Wayland Nativo - Solo funciona en algunos compositores)
-if command -v grim >/dev/null && [ -n ""$WAYLAND_DISPLAY"" ]; then
-    ERR=$(sudo -u $REAL_USER env WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
-    grim ""$OUTPUT"" 2>&1)
-    if is_valid ""$OUTPUT""; then echo ""METHOD:grim-wayland-silent"" && exit 0; 
-    else echo ""DEBUG:grim_fail=$ERR""; fi
-fi
-
-# Opción C: gnome-screenshot (El más compatible en Ubuntu 24.04, aunque tenga flash)
-if command -v gnome-screenshot >/dev/null; then
-    ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
-    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
-    gnome-screenshot -f ""$OUTPUT"" 2>&1)
-    if is_valid ""$OUTPUT""; then echo ""METHOD:gnome-screenshot-flash"" && exit 0; 
-    else echo ""DEBUG:gnome-screenshot_fail=$ERR""; fi
-fi
-
-# Opción D: scrot (X11 - Probablemente negro en Wayland)
+# Opción 1: scrot (Silent - X11/XWayland)
+# Probamos esto ANTES que gnome-screenshot para evitar el flash si XWayland funciona bien
 if command -v scrot >/dev/null; then
     ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
     scrot -z -o ""$OUTPUT"" 2>&1)
@@ -272,12 +239,46 @@ if command -v scrot >/dev/null; then
     else echo ""DEBUG:scrot_fail=$ERR""; fi
 fi
 
-# Opción E: import (ImageMagick)
+# Opción 2: import (Silent - ImageMagick - X11/XWayland)
 if command -v import >/dev/null; then
     ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY \
     import -window root ""$OUTPUT"" 2>&1)
     if is_valid ""$OUTPUT""; then echo ""METHOD:import-X11"" && exit 0; 
     else echo ""DEBUG:import_fail=$ERR""; fi
+fi
+
+# Opción 3: grim (Silent - Wayland Nativo)
+if command -v grim >/dev/null && [ -n ""$WAYLAND_DISPLAY"" ]; then
+    ERR=$(sudo -u $REAL_USER env WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
+    grim ""$OUTPUT"" 2>&1)
+    if is_valid ""$OUTPUT""; then echo ""METHOD:grim-wayland-silent"" && exit 0; 
+    else echo ""DEBUG:grim_fail=$ERR""; fi
+fi
+
+# Opción A: D-Bus GNOME (Silent - Requiere Unsafe Mode)
+if [ -n ""$DBUS_SESSION_BUS_ADDRESS"" ]; then
+    # Intentamos activar unsafe-mode (aunque probablemente falle en Ubuntu 24.04)
+    ERR_SHELL=$(sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set org.gnome.shell unsafe-mode true 2>&1)
+    
+    ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS \
+    gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
+    --method org.gnome.Shell.Screenshot.Screenshot true false ""$OUTPUT"" 2>&1)
+
+    # Restaurar
+    sudo -u $REAL_USER env DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS XDG_DATA_DIRS=$XDG_DATA_DIRS gsettings set org.gnome.shell unsafe-mode false 2>/dev/null
+    
+    if is_valid ""$OUTPUT""; then echo ""METHOD:gnome-dbus-silent"" && exit 0; 
+    else echo ""DEBUG:gdbus_fail=$ERR (shell_err=$ERR_SHELL)""; fi
+fi
+
+# Opción FINAL: gnome-screenshot (El más compatible pero tiene FLASH - Usar solo si todo lo demás falla)
+if command -v gnome-screenshot >/dev/null; then
+    ERR=$(sudo -u $REAL_USER env DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS \
+    gnome-screenshot -f ""$OUTPUT"" 2>&1)
+    if is_valid ""$OUTPUT""; then echo ""METHOD:gnome-screenshot-flash"" && exit 0; 
+    else echo ""DEBUG:gnome-screenshot_fail=$ERR""; fi
 fi
 
 exit 1
